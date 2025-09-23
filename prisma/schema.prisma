@@ -1,0 +1,339 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User management (synced from Clerk)
+model User {
+  id        String   @id
+  email     String   @unique
+  name      String?
+  role      UserRole
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  syncLogs              SyncLog[]
+  systemSettings        SystemSetting[]
+  notifications         Notification[]
+  exportLogs            ExportLog[]
+  effectivenessAnalysis EffectivenessAnalysis[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  Manager
+  Admin
+}
+
+// Department hierarchy from B2Chat
+model Department {
+  id         String    @id
+  b2chatCode String    @unique @map("b2chat_code")
+  name       String
+  parentId   String?   @map("parent_id")
+  isLeaf     Boolean   @default(false) @map("is_leaf")
+  isActive   Boolean   @default(true) @map("is_active")
+  path       String? // Materialized path like '/sales/enterprise/'
+  level      Int       @default(0)
+  lastSyncAt DateTime? @map("last_sync_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  parent   Department?  @relation("DepartmentHierarchy", fields: [parentId], references: [id])
+  children Department[] @relation("DepartmentHierarchy")
+  agents   Agent[]
+  chats    Chat[]
+
+  @@index([b2chatCode])
+  @@index([parentId])
+  @@index([path])
+  @@index([isActive, isLeaf])
+  @@map("departments")
+}
+
+// Agent information from B2Chat
+model Agent {
+  id             String    @id
+  b2chatId       String    @unique @map("b2chat_id")
+  name           String
+  email          String?
+  username       String?
+  departmentId   String?   @map("department_id")
+  isActive       Boolean   @default(true) @map("is_active")
+  isDeleted      Boolean   @default(false) @map("is_deleted")
+  deletedAt      DateTime? @map("deleted_at")
+  deletionReason String?   @map("deletion_reason")
+  lastSyncAt     DateTime? @map("last_sync_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  department Department? @relation(fields: [departmentId], references: [id])
+  chats      Chat[]
+
+  @@index([b2chatId])
+  @@index([departmentId])
+  @@index([isActive])
+  @@index([isDeleted])
+  @@map("agents")
+}
+
+// Customer contact information from B2Chat
+model Contact {
+  id               String    @id
+  b2chatId         String    @unique @map("b2chat_id")
+  fullName         String    @map("full_name")
+  mobile           String?
+  email            String?
+  identification   String?
+  address          String?
+  city             String?
+  country          String?
+  company          String?
+  customAttributes Json?     @map("custom_attributes")
+  isDeleted        Boolean   @default(false) @map("is_deleted")
+  deletedAt        DateTime? @map("deleted_at")
+  deletionReason   String?   @map("deletion_reason")
+  lastSyncAt       DateTime? @map("last_sync_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  chats Chat[]
+
+  @@index([b2chatId])
+  @@index([email])
+  @@index([mobile])
+  @@index([isDeleted])
+  @@map("contacts")
+}
+
+// Main conversation records from B2Chat
+model Chat {
+  id               String       @id
+  b2chatId         String       @unique @map("b2chat_id")
+  agentId          String?      @map("agent_id")
+  contactId        String?      @map("contact_id")
+  departmentId     String?      @map("department_id")
+  provider         ChatProvider
+  status           ChatStatus
+  isAgentAvailable Boolean?     @map("is_agent_available")
+  createdAt        DateTime     @map("created_at")
+  openedAt         DateTime?    @map("opened_at")
+  pickedUpAt       DateTime?    @map("picked_up_at")
+  responseAt       DateTime?    @map("response_at")
+  closedAt         DateTime?    @map("closed_at")
+  duration         Int? // seconds
+  isDeleted        Boolean      @default(false) @map("is_deleted")
+  deletedAt        DateTime?    @map("deleted_at")
+  deletionReason   String?      @map("deletion_reason")
+  lastModifiedAt   DateTime?    @map("last_modified_at")
+  lastSyncAt       DateTime?    @map("last_sync_at")
+  syncVersion      Int          @default(1) @map("sync_version")
+
+  // Relations
+  agent                 Agent?                  @relation(fields: [agentId], references: [id])
+  contact               Contact?                @relation(fields: [contactId], references: [id])
+  department            Department?             @relation(fields: [departmentId], references: [id])
+  messages              Message[]
+  effectivenessAnalysis EffectivenessAnalysis[]
+
+  @@index([b2chatId])
+  @@index([agentId, createdAt])
+  @@index([contactId, createdAt])
+  @@index([departmentId, createdAt])
+  @@index([provider, createdAt])
+  @@index([isDeleted])
+  @@index([lastModifiedAt])
+  @@map("chats")
+}
+
+enum ChatProvider {
+  whatsapp
+  facebook
+  telegram
+  livechat
+  b2cbotapi
+}
+
+enum ChatStatus {
+  open
+  closed
+  pending
+}
+
+// Individual messages within chats
+model Message {
+  id              String      @id
+  chatId          String      @map("chat_id")
+  b2chatMessageId String?     @unique @map("b2chat_message_id")
+  text            String?
+  type            MessageType
+  incoming        Boolean // true = from customer, false = from agent
+  imageUrl        String?     @map("image_url")
+  fileUrl         String?     @map("file_url")
+  caption         String?
+  localImagePath  String?     @map("local_image_path")
+  localFilePath   String?     @map("local_file_path")
+  mediaBackedUp   Boolean     @default(false) @map("media_backed_up")
+  mediaSize       Int?        @map("media_size")
+  mediaMimeType   String?     @map("media_mime_type")
+  timestamp       DateTime
+  lastSyncAt      DateTime?   @map("last_sync_at")
+
+  // Relations
+  chat Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@index([chatId, timestamp])
+  @@index([type])
+  @@index([mediaBackedUp])
+  @@map("messages")
+}
+
+enum MessageType {
+  text
+  image
+  file
+}
+
+// Sync management tables
+model SyncLog {
+  id           String    @id @default(cuid())
+  userId       String    @map("user_id")
+  entityType   String    @map("entity_type")
+  operation    String
+  recordCount  Int       @map("record_count")
+  status       String
+  startedAt    DateTime  @map("started_at")
+  completedAt  DateTime? @map("completed_at")
+  errorMessage String?   @map("error_message")
+  metadata     Json?
+
+  // Relations
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entityType])
+  @@index([status])
+  @@map("sync_logs")
+}
+
+model SyncState {
+  id                String    @id
+  entityType        String    @unique @map("entity_type")
+  lastSyncTimestamp DateTime? @map("last_sync_timestamp")
+  lastSyncedId      String?   @map("last_synced_id")
+  lastSyncOffset    Int?      @map("last_sync_offset")
+  syncStatus        String    @map("sync_status")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@map("sync_states")
+}
+
+model SyncCheckpoint {
+  id                String    @id
+  syncId            String    @map("sync_id")
+  entityType        String    @map("entity_type")
+  totalRecords      Int?      @map("total_records")
+  processedRecords  Int       @default(0) @map("processed_records")
+  successfulRecords Int       @default(0) @map("successful_records")
+  failedRecords     Int       @default(0) @map("failed_records")
+  failureDetails    Json?     @map("failure_details")
+  checkpoint        String?
+  status            String
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  completedAt       DateTime? @map("completed_at")
+
+  @@index([syncId])
+  @@index([entityType])
+  @@map("sync_checkpoints")
+}
+
+// System configuration
+model SystemSetting {
+  id              String   @id @default(cuid())
+  key             String   @unique
+  value           String
+  category        String
+  description     String?
+  isSystemSetting Boolean  @default(false) @map("is_system_setting")
+  userId          String?  @map("user_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([category])
+  @@map("system_settings")
+}
+
+// Notifications
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  title     String
+  message   String
+  type      String
+  isRead    Boolean  @default(false) @map("is_read")
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([isRead])
+  @@map("notifications")
+}
+
+// Export tracking
+model ExportLog {
+  id          String    @id @default(cuid())
+  userId      String    @map("user_id")
+  exportType  String    @map("export_type")
+  fileName    String    @map("file_name")
+  fileUrl     String?   @map("file_url")
+  recordCount Int       @map("record_count")
+  status      String
+  createdAt   DateTime  @default(now()) @map("created_at")
+  completedAt DateTime? @map("completed_at")
+  expiresAt   DateTime? @map("expires_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@map("export_logs")
+}
+
+// AI Analysis results
+model EffectivenessAnalysis {
+  id                   String   @id @default(cuid())
+  chatId               String   @map("chat_id")
+  userId               String   @map("user_id")
+  effectivenessScore   Float    @map("effectiveness_score")
+  responseTimeScore    Float    @map("response_time_score")
+  resolutionScore      Float    @map("resolution_score")
+  customerSatisfaction Float?   @map("customer_satisfaction")
+  analysisData         Json     @map("analysis_data")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  // Relations
+  chat Chat @relation(fields: [chatId], references: [id])
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([chatId])
+  @@index([userId])
+  @@index([effectivenessScore])
+  @@map("effectiveness_analysis")
+}
