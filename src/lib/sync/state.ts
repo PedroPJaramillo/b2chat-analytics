@@ -57,6 +57,7 @@ export class SyncStateManager {
   static async updateCheckpoint(
     checkpointId: string,
     data: {
+      totalRecords?: number
       processedRecords?: number
       successfulRecords?: number
       failedRecords?: number
