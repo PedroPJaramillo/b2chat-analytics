@@ -7,18 +7,17 @@ const globalForPrisma = globalThis as unknown as {
 // Create Prisma client with conditional configuration
 const createPrismaClient = () => {
   if (!process.env.DATABASE_URL) {
-    // During build time, return a mock client to prevent errors
-    return new PrismaClient({
-      datasources: {
-        db: {
-          url: 'postgresql://placeholder:5432/placeholder',
-        },
-      },
-    })
+    // During build time or when DATABASE_URL is not set, throw descriptive error
+    throw new Error(
+      'DATABASE_URL environment variable is required. Please set it in your .env file or environment variables.\n' +
+      'Example: DATABASE_URL="postgresql://username:password@localhost:5432/b2chat_analytics"'
+    )
   }
 
   return new PrismaClient({
     log: process.env.NODE_ENV === 'development' ? ['query'] : [],
+    // Add better error handling and connection configuration
+    errorFormat: 'pretty',
   })
 }
 

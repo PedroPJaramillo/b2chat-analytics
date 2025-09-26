@@ -5,12 +5,12 @@ This file provides specific instructions for Claude when working on the B2Chat A
 ## 📚 Primary Documentation References
 
 **ALWAYS reference these files before making changes:**
+- `README.md` - Project overview, setup, and deployment instructions
 - `/tech_stack_standards.md` - Complete tech stack requirements and approved dependencies
 - `/B2Chat/b2chat_dev_docs.md` - B2Chat API documentation and endpoints
 - `/B2Chat/best_practices_standards.md` - Development philosophy and React best practices
 - `/B2Chat/code_style_standards.md` - Formatting and naming conventions
-- `NEXT_STEPS_PLAN.md` - Project roadmap and current phase status
-- `INTEGRATION_STATUS.md` - Current API integration status and known issues
+- `DEPLOYMENT_CHECKLIST.md` - Deployment steps and production configuration
 
 ## 🔧 Tech Stack Standards
 
@@ -44,15 +44,15 @@ This file provides specific instructions for Claude when working on the B2Chat A
 ✅ /chats/export     # Export chats (GET with filters)
 ✅ /oauth/token      # Authentication
 ✅ /health           # Health check
-❌ /agents          # Does NOT exist - no agents endpoint
+✅ /agents          # Extracted from chat data (no direct API endpoint)
 ❌ /contacts        # Use /contacts/export instead
 ❌ /chats           # Use /chats/export instead
 ```
 
 ### Critical Notes
-- **No Agents Module**: B2Chat API doesn't provide agents endpoint - remove or mock this functionality
+- **Agents Data**: Extracted from chat responses (agent field) - no direct API endpoint
 - **Export Endpoints**: Use `/contacts/export` and `/chats/export`, not direct `/contacts` or `/chats`
-- **Authentication Fixed**: OAuth endpoint corrected in INTEGRATION_STATUS.md
+- **Authentication**: OAuth endpoint working correctly at `/oauth/token`
 
 ## 📁 Project Architecture
 
@@ -72,12 +72,14 @@ src/
 ```
 
 ### Current Implementation Status
-- ✅ **Phase 1-4**: Complete foundation, sync engine, dashboard UI
-- ✅ **Authentication**: Clerk integration working
-- ✅ **Database**: 15 models including contacts, chats, sync states
-- ⚠️ **API Client**: Needs endpoint updates (see INTEGRATION_STATUS.md)
-- ❌ **Agents**: Remove completely (not supported by B2Chat API)
-- 🎯 **Current Phase**: Ready for Phase 5 (Database & Environment Setup)
+- ✅ **Phase 1-5**: Complete foundation, sync engine, dashboard UI, database setup
+- ✅ **Authentication**: Clerk integration fully working
+- ✅ **Database**: 15 models with complete schema and migrations
+- ✅ **API Client**: Updated with correct export endpoints
+- ✅ **Agents**: Implemented via extraction from chat data
+- ✅ **Dashboard**: Full analytics with charts, metrics, and real-time data
+- ✅ **Sync Engine**: Complete with queue management and error handling
+- 🎯 **Current Phase**: Ready for production deployment
 
 ## 🛠️ Development Workflow
 
@@ -131,9 +133,10 @@ npm run test:load              # k6 load testing
 - **Location**: `src/components/providers/query-provider.tsx`
 
 ### 4. B2Chat API Client
-- ⚠️ **Needs updates**: Use export endpoints, remove agents
+- ✅ **Updated**: Using correct export endpoints
 - **File**: `src/lib/b2chat/client.ts`
 - **Authentication**: OAuth working correctly
+- **Agents**: Extracted from chat data responses
 
 ## 📋 Development Guidelines
 
@@ -151,9 +154,9 @@ npm run test:load              # k6 load testing
 5. **Update this file** if you discover new patterns
 
 ### When Fixing Issues
-1. **Check INTEGRATION_STATUS.md** for known API issues
+1. **Check API implementation** in `src/lib/b2chat/client.ts`
 2. **Use proper B2Chat endpoints** (/contacts/export, not /contacts)
-3. **Remove agents functionality** (API doesn't support it)
+3. **Agents data** is extracted from chat responses
 4. **Follow error handling patterns** from existing code
 
 ## 🎯 Project-Specific Context
@@ -172,23 +175,23 @@ npm run test:load              # k6 load testing
 - **Admin Tools**: Sync configuration and monitoring
 
 ### Current Limitations
-- **No Agents Data**: B2Chat API doesn't provide agents endpoint
+- **Agents API**: No direct endpoint - extracted from chat data
 - **Export-only API**: Must use export endpoints for data retrieval
-- **Phase 5 Ready**: Need database setup and environment configuration
+- **Production Ready**: Requires environment variables and deployment
 
 ## 🔄 Next Steps Priority
 
-### Immediate (Phase 5)
-1. **Database Setup**: Configure PostgreSQL and run migrations
-2. **Environment Variables**: Set up B2Chat API credentials
-3. **API Client Updates**: Fix endpoints to use /export versions
-4. **Remove Agents**: Clean up non-functional agents module
+### Immediate (Production Deployment)
+1. **Environment Setup**: Configure all production environment variables
+2. **Deploy to Vercel**: Use deployment checklist and scripts
+3. **Database Migration**: Apply schema to production database
+4. **Verify Integration**: Test with real B2Chat data
 
-### Upcoming (Phase 6-7)
-1. **Real Data Testing**: Validate sync with actual B2Chat data
-2. **Comprehensive Testing**: Unit, integration, e2e tests
-3. **Performance Optimization**: Database queries and caching
-4. **Security Implementation**: Input validation and error handling
+### Post-Deployment
+1. **Monitor Performance**: Check sync operations and API usage
+2. **User Training**: Document user workflows and features
+3. **Optimize Queries**: Based on real usage patterns
+4. **Add Features**: Based on user feedback
 
 ---
 
@@ -198,8 +201,9 @@ npm run test:load              # k6 load testing
 - **Update this file** when you discover new patterns or solutions
 - **Reference documentation files** linked at the top before making architectural decisions
 - **Follow the tech stack standards** strictly - don't add unapproved dependencies
-- **Remember**: No agents functionality, use B2Chat export endpoints only
+- **Remember**: Agents extracted from chat data, use B2Chat export endpoints
+- **Project Status**: Production-ready, pending deployment
 
-**Last Updated**: 2025-09-23
-**Current Phase**: Phase 5 - Database & Environment Setup
-**Status**: Modal transparency issue resolved via shadcn init
+**Last Updated**: 2025-09-25
+**Current Phase**: Production Deployment Ready
+**Recent Updates**: Complete dashboard, sync engine, and all core features implemented

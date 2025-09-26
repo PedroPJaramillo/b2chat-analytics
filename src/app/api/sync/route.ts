@@ -3,6 +3,8 @@ import { auth } from '@clerk/nextjs/server'
 import { SyncEngine } from '@/lib/sync/engine'
 import { SyncStateManager } from '@/lib/sync/state'
 import { logger } from '@/lib/logger'
+import { validateRequestBody, SyncRequestSchema, createValidationError, isValidationError } from '@/lib/validation'
+import { syncRateLimit } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,8 +16,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const body = await req.json()
-    const { entityType, options = {} } = body
+    // Apply rate limiting for sync operations
+    const rateLimitResponse = await syncRateLimit(req, userId)
+    if (rateLimitResponse) {
+      return rateLimitResponse
+    }
+
+    // Validate request body
+    const validationResult = await validateRequestBody(req, SyncRequestSchema)
+    if (isValidationError(validationResult)) {
+      return NextResponse.json(createValidationError(validationResult.details), { status: 400 })
+    }
+
+    const { entityType, options = {} } = validationResult
 
     const syncEngine = new SyncEngine()
 
@@ -25,35 +38,34 @@ export async function POST(req: NextRequest) {
       options
     })
 
+    let result
     switch (entityType) {
       case 'contacts':
-        await syncEngine.syncContacts(options)
+        result = await syncEngine.syncContacts(userId, options)
         break
       case 'chats':
-        await syncEngine.syncChats(options)
+        result = await syncEngine.syncChats(userId, options)
         break
       case 'all':
-        await syncEngine.syncAll(options)
+        result = await syncEngine.syncAll(userId, options)
         break
-      default:
-        return NextResponse.json(
-          { error: 'Invalid entity type. Supported: contacts, chats, all' },
-          { status: 400 }
-        )
     }
 
     return NextResponse.json({
-      success: true,
-      message: `${entityType} sync completed successfully`
+      success: result ? result.success !== false : true,
+      message: `${entityType} sync completed`,
+      result: result
     })
 
   } catch (error) {
     logger.error('Sync API error', {
-      error: error instanceof Error ? error.message : 'Unknown error'
+      userId,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
     })
 
     return NextResponse.json(
-      { error: 'Sync operation failed' },
+      { error: 'Sync operation failed', success: false },
       { status: 500 }
     )
   }

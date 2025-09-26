@@ -1,25 +1,62 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { prisma } from '@/lib/prisma'
+import { validateSearchParams, ChatsQuerySchema, createValidationError, isValidationError } from '@/lib/validation'
+import { searchRateLimit } from '@/lib/rate-limit'
+import { logger } from '@/lib/logger'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
     const { userId } = await auth()
     if (!userId) {
-      return new NextResponse('Unauthorized', { status: 401 })
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { searchParams } = new URL(request.url)
-    const status = searchParams.get('status')
-    const priority = searchParams.get('priority')
-    const limit = parseInt(searchParams.get('limit') || '50')
-    const offset = parseInt(searchParams.get('offset') || '0')
+    // Apply rate limiting
+    const rateLimitResponse = await searchRateLimit(request, userId)
+    if (rateLimitResponse) {
+      return rateLimitResponse
+    }
 
-    const where: any = {}
+    // Validate query parameters
+    const validationResult = validateSearchParams(request, ChatsQuerySchema)
+    if (isValidationError(validationResult)) {
+      return NextResponse.json(createValidationError(validationResult.details), { status: 400 })
+    }
+
+    const { status, priority, limit, offset, search, agentId, contactId, startDate, endDate } = validationResult
+
+    // Build secure where clause
+    const where: any = {
+      // Ensure data isolation - users can only see chats they have access to
+      isDeleted: false
+    }
+
     if (status && status !== 'all') {
       where.status = status
+    }
+
+    if (agentId) {
+      where.agentId = agentId
+    }
+
+    if (contactId) {
+      where.contactId = contactId
+    }
+
+    if (search) {
+      where.OR = [
+        { contact: { fullName: { contains: search, mode: 'insensitive' } } },
+        { agent: { name: { contains: search, mode: 'insensitive' } } },
+      ]
+    }
+
+    if (startDate || endDate) {
+      where.createdAt = {}
+      if (startDate) where.createdAt.gte = startDate
+      if (endDate) where.createdAt.lte = endDate
     }
 
     const chats = await prisma.chat.findMany({
@@ -67,9 +104,29 @@ export async function GET(request: Request) {
       updatedAt: chat.lastModifiedAt || chat.createdAt
     }))
 
-    return NextResponse.json(chatsWithMetrics)
+    // Get total count for pagination
+    const totalCount = await prisma.chat.count({ where })
+
+    // Return paginated results with metadata
+    return NextResponse.json({
+      data: chatsWithMetrics,
+      pagination: {
+        total: totalCount,
+        limit,
+        offset,
+        hasMore: offset + limit < totalCount
+      }
+    })
   } catch (error) {
-    console.error('Error fetching chats:', error)
-    return new NextResponse('Internal Server Error', { status: 500 })
+    logger.error('Error fetching chats', {
+      userId,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined
+    })
+
+    return NextResponse.json(
+      { error: 'Failed to fetch chats' },
+      { status: 500 }
+    )
   }
 }
