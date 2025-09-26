@@ -1,0 +1,60 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+.next/
+out/
+build/
+dist/
+
+# Development files
+.env.local
+.env.development
+.env.test
+
+# Testing
+coverage/
+.nyc_output/
+junit.xml
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+
+# Scripts (not needed in production)
+scripts/test-*.ts
+scripts/load-test.js
+
+# Documentation
+*.md
+docs/
+
+# K6 load testing
+k6/
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/

@@ -1,0 +1,281 @@
+"use client"
+
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
+import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Users,
+  MessageSquare,
+  Clock,
+  TrendingUp,
+  Activity,
+  UserCheck
+} from "lucide-react"
+import { useDashboardStats } from "@/hooks/use-dashboard-stats"
+import { useAgents } from "@/hooks/use-agents"
+import { useDashboardActivity } from "@/hooks/use-dashboard-activity"
+
+export default function DashboardPage() {
+  const { data: stats, loading: statsLoading, error: statsError } = useDashboardStats()
+  const { data: agents, loading: agentsLoading } = useAgents()
+  const { data: activities, loading: activitiesLoading } = useDashboardActivity()
+  return (
+    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+      <div className="flex items-center justify-between space-y-2">
+        <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
+        <div className="flex items-center space-x-2">
+          {stats?.totalChats && stats.totalChats > 0 ? (
+            <Badge variant="outline">Live Data</Badge>
+          ) : (
+            <Badge variant="secondary">No Data - Run B2Chat Sync</Badge>
+          )}
+        </div>
+      </div>
+
+      <Tabs defaultValue="overview" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="analytics">Analytics</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-4">
+          {/* Key Metrics Cards */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Agents</CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {statsLoading ? (
+                  <Skeleton className="h-8 w-16" />
+                ) : (
+                  <div className="text-2xl font-bold">{stats?.totalAgents || 0}</div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  +{stats?.trends.agentsChange || 0} from last month
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Active Chats</CardTitle>
+                <MessageSquare className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {statsLoading ? (
+                  <Skeleton className="h-8 w-16" />
+                ) : (
+                  <div className="text-2xl font-bold">{stats?.activeChats || 0}</div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  +{stats?.trends.chatsChange || 0}% from yesterday
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Avg Response Time</CardTitle>
+                <Clock className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {statsLoading ? (
+                  <Skeleton className="h-8 w-16" />
+                ) : (
+                  <div className="text-2xl font-bold">{stats?.avgResponseTime || '0m'}</div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  {stats?.trends.responseTimeChange && stats.trends.responseTimeChange < 0 ? '' : '+'}
+                  {stats?.trends.responseTimeChange || 0}% from last week
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Satisfaction Rate</CardTitle>
+                <UserCheck className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {statsLoading ? (
+                  <Skeleton className="h-8 w-16" />
+                ) : (
+                  <div className="text-2xl font-bold">{stats?.satisfactionRate || 0}%</div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  +{stats?.trends.satisfactionChange || 0}% from last month
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Recent Activity & Performance */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+            <Card className="col-span-4">
+              <CardHeader>
+                <CardTitle>Recent Activity</CardTitle>
+                <CardDescription>
+                  Latest customer service interactions and system events
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {activitiesLoading ? (
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="flex items-center space-x-4">
+                      <Skeleton className="w-2 h-2 rounded-full" />
+                      <div className="flex-1 space-y-1">
+                        <Skeleton className="h-4 w-48" />
+                        <Skeleton className="h-3 w-24" />
+                      </div>
+                    </div>
+                  ))
+                ) : activities.length > 0 ? (
+                  activities.map((activity) => (
+                    <div key={activity.id} className="flex items-center space-x-4">
+                      <div className={`w-2 h-2 ${activity.color} rounded-full`}></div>
+                      <div className="flex-1 space-y-1">
+                        <p className="text-sm font-medium leading-none">
+                          {activity.title}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {activity.timeAgo}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="flex items-center justify-center h-24">
+                    <p className="text-sm text-muted-foreground">No recent activity</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="col-span-3">
+              <CardHeader>
+                <CardTitle>Agent Performance</CardTitle>
+                <CardDescription>
+                  Current workload and efficiency metrics
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {agentsLoading ? (
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Skeleton className="h-4 w-32" />
+                        <Skeleton className="h-4 w-16" />
+                      </div>
+                      <Skeleton className="h-2 w-full" />
+                    </div>
+                  ))
+                ) : agents.length > 0 ? (
+                  agents.slice(0, 3).map((agent, index) => {
+                    const colors = ['bg-green-500', 'bg-yellow-500', 'bg-blue-500']
+                    const maxChats = Math.max(...agents.map(a => a.activeChats))
+                    const progressValue = maxChats > 0 ? (agent.activeChats / maxChats) * 100 : 0
+
+                    return (
+                      <div key={agent.id} className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-2">
+                            <div className={`w-2 h-2 ${colors[index]} rounded-full`}></div>
+                            <span className="text-sm font-medium">{agent.name}</span>
+                          </div>
+                          <span className="text-sm text-muted-foreground">{agent.activeChats} chats</span>
+                        </div>
+                        <Progress value={progressValue} className="h-2" />
+                      </div>
+                    )
+                  })
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-24 text-center">
+                    <p className="text-sm text-muted-foreground mb-2">No agent data available</p>
+                    <p className="text-xs text-muted-foreground">Run B2Chat sync to populate agent data from chats</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="analytics" className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Chat Volume</CardTitle>
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {statsLoading ? (
+                  <Skeleton className="h-8 w-16" />
+                ) : (
+                  <div className="text-2xl font-bold">{stats?.totalChats || 0}</div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  +{stats?.trends.chatsChange || 0}% from yesterday
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Resolution Rate</CardTitle>
+                <Activity className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {statsLoading ? (
+                  <Skeleton className="h-8 w-16" />
+                ) : (
+                  <div className="text-2xl font-bold">{stats?.satisfactionRate || 0}%</div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  +{stats?.trends.satisfactionChange || 0}% from last month
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Avg Response Time</CardTitle>
+                <Clock className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {statsLoading ? (
+                  <Skeleton className="h-8 w-16" />
+                ) : (
+                  <div className="text-2xl font-bold">{stats?.avgResponseTime || '0m'}</div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  {stats?.trends.responseTimeChange && stats.trends.responseTimeChange < 0 ? '' : '+'}
+                  {stats?.trends.responseTimeChange || 0}% from last week
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Active Chats</CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                {statsLoading ? (
+                  <Skeleton className="h-8 w-16" />
+                ) : (
+                  <div className="text-2xl font-bold">{stats?.activeChats || 0}</div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  currently open
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
+    </div>
+  )
+}

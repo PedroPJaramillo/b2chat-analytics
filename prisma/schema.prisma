@@ -63,7 +63,7 @@ model Agent {
   b2chatId       String    @unique @map("b2chat_id")
   name           String
   email          String?
-  username       String?
+  username       String?   @unique
   departmentId   String?   @map("department_id")
   isActive       Boolean   @default(true) @map("is_active")
   isDeleted      Boolean   @default(false) @map("is_deleted")
@@ -81,6 +81,7 @@ model Agent {
   @@index([departmentId])
   @@index([isActive])
   @@index([isDeleted])
+  @@index([username])
   @@map("agents")
 }
 
@@ -231,6 +232,10 @@ model SyncState {
   lastSyncedId      String?   @map("last_synced_id")
   lastSyncOffset    Int?      @map("last_sync_offset")
   syncStatus        String    @map("sync_status")
+  totalRecords      Int       @default(0) @map("total_records")
+  successfulRecords Int       @default(0) @map("successful_records")
+  failedRecords     Int       @default(0) @map("failed_records")
+  syncDuration      Int?      @map("sync_duration") // milliseconds
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 

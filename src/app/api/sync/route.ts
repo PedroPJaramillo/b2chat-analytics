@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { auth } from '@clerk/nextjs'
+import { auth } from '@clerk/nextjs/server'
 import { SyncEngine } from '@/lib/sync/engine'
 import { SyncStateManager } from '@/lib/sync/state'
 import { logger } from '@/lib/logger'
 
+export const dynamic = 'force-dynamic'
+
 export async function POST(req: NextRequest) {
   try {
     // Check authentication
-    const { userId } = auth()
+    const { userId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -24,9 +26,6 @@ export async function POST(req: NextRequest) {
     })
 
     switch (entityType) {
-      case 'agents':
-        await syncEngine.syncAgents(options)
-        break
       case 'contacts':
         await syncEngine.syncContacts(options)
         break
@@ -38,7 +37,7 @@ export async function POST(req: NextRequest) {
         break
       default:
         return NextResponse.json(
-          { error: 'Invalid entity type' },
+          { error: 'Invalid entity type. Supported: contacts, chats, all' },
           { status: 400 }
         )
     }
@@ -63,18 +62,16 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   try {
     // Check authentication
-    const { userId } = auth()
+    const { userId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get sync status for all entities
-    const agentsSync = await SyncStateManager.getLastSync('agents')
+    // Get sync status for supported entities (contacts and chats only)
     const contactsSync = await SyncStateManager.getLastSync('contacts')
     const chatsSync = await SyncStateManager.getLastSync('chats')
 
     return NextResponse.json({
-      agents: agentsSync,
       contacts: contactsSync,
       chats: chatsSync,
     })

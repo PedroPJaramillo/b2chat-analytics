@@ -1,4 +1,4 @@
-import { auth, clerkClient, currentUser } from "@clerk/nextjs"
+import { auth, clerkClient, currentUser } from "@clerk/nextjs/server"
 import type { User } from "@clerk/nextjs/server"
 import { prisma } from "@/lib/prisma"
 

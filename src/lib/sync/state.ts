@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma'
 import { SyncState } from '@prisma/client'
 
-export type EntityType = 'agents' | 'contacts' | 'chats' | 'messages'
+export type EntityType = 'contacts' | 'chats' | 'messages'
 
 export class SyncStateManager {
   static async getLastSync(entityType: EntityType): Promise<SyncState | null> {
@@ -17,6 +17,10 @@ export class SyncStateManager {
       lastSyncedId?: string
       lastSyncOffset?: number
       syncStatus?: string
+      totalRecords?: number
+      successfulRecords?: number
+      failedRecords?: number
+      syncDuration?: number
     }
   ): Promise<void> {
     await prisma.syncState.upsert({
@@ -32,6 +36,10 @@ export class SyncStateManager {
         lastSyncTimestamp: data.lastSyncTimestamp,
         lastSyncedId: data.lastSyncedId,
         lastSyncOffset: data.lastSyncOffset,
+        totalRecords: data.totalRecords || 0,
+        successfulRecords: data.successfulRecords || 0,
+        failedRecords: data.failedRecords || 0,
+        syncDuration: data.syncDuration,
         createdAt: new Date(),
         updatedAt: new Date(),
       },

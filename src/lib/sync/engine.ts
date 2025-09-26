@@ -1,8 +1,10 @@
 import { B2ChatClient, B2ChatAPIError } from '@/lib/b2chat/client'
 import { rateLimitedQueue } from '@/lib/b2chat/queue'
 import { SyncStateManager, EntityType } from './state'
+import { getSyncConfig } from './config'
 import { prisma } from '@/lib/prisma'
 import { logger } from '@/lib/logger'
+import { SyncLogger } from './logger'
 
 export interface SyncOptions {
   batchSize?: number
@@ -13,134 +15,35 @@ export interface SyncOptions {
 
 export class SyncEngine {
   private client: B2ChatClient
-  private defaultOptions: Required<SyncOptions> = {
-    batchSize: 100,
-    maxRetries: 3,
-    retryDelay: 1000,
-    fullSync: false,
-  }
 
   constructor() {
     this.client = new B2ChatClient()
   }
 
-  async syncAgents(options: SyncOptions = {}): Promise<void> {
-    const opts = { ...this.defaultOptions, ...options }
-    const syncId = `agents_sync_${Date.now()}`
+  private async getSyncOptions(overrides: SyncOptions = {}): Promise<Required<SyncOptions>> {
+    const config = await getSyncConfig()
 
-    logger.info('Starting agents sync', { syncId, options: opts })
-
-    try {
-      await SyncStateManager.updateSyncState('agents', {
-        syncStatus: 'running',
-        lastSyncTimestamp: new Date(),
-      })
-
-      const checkpoint = await SyncStateManager.createCheckpoint(syncId, 'agents')
-
-      // Get agents from B2Chat API
-      const agents = await rateLimitedQueue.add(() => this.client.getAgents())
-
-      await SyncStateManager.updateCheckpoint(checkpoint.id, {
-        totalRecords: agents.length,
-      })
-
-      let processed = 0
-      let successful = 0
-      let failed = 0
-
-      // Process agents in batches
-      for (let i = 0; i < agents.length; i += opts.batchSize) {
-        const batch = agents.slice(i, i + opts.batchSize)
-
-        for (const agentData of batch) {
-          try {
-            await prisma.agent.upsert({
-              where: { b2chatId: agentData.id },
-              update: {
-                name: agentData.name,
-                email: agentData.email,
-                username: agentData.username,
-                isActive: agentData.active,
-                lastSyncAt: new Date(),
-                updatedAt: new Date(),
-              },
-              create: {
-                id: `agent_${agentData.id}`,
-                b2chatId: agentData.id,
-                name: agentData.name,
-                email: agentData.email,
-                username: agentData.username,
-                isActive: agentData.active,
-                lastSyncAt: new Date(),
-                createdAt: new Date(),
-                updatedAt: new Date(),
-              },
-            })
-            successful++
-          } catch (error) {
-            logger.error('Failed to sync agent', {
-              agentId: agentData.id,
-              error: error instanceof Error ? error.message : 'Unknown error'
-            })
-            failed++
-          }
-          processed++
-        }
-
-        // Update checkpoint progress
-        await SyncStateManager.updateCheckpoint(checkpoint.id, {
-          processedRecords: processed,
-          successfulRecords: successful,
-          failedRecords: failed,
-        })
-
-        logger.info('Agents sync progress', {
-          syncId,
-          processed,
-          successful,
-          failed,
-          total: agents.length
-        })
-      }
-
-      // Complete the sync
-      await SyncStateManager.updateCheckpoint(checkpoint.id, {
-        status: failed > 0 ? 'partial' : 'completed',
-        completedAt: new Date(),
-      })
-
-      await SyncStateManager.updateSyncState('agents', {
-        syncStatus: 'completed',
-        lastSyncTimestamp: new Date(),
-      })
-
-      logger.info('Agents sync completed', {
-        syncId,
-        total: agents.length,
-        successful,
-        failed
-      })
-
-    } catch (error) {
-      logger.error('Agents sync failed', {
-        syncId,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      })
-
-      await SyncStateManager.updateSyncState('agents', {
-        syncStatus: 'failed',
-      })
-
-      throw error
+    return {
+      batchSize: overrides.batchSize ?? config.batchSize,
+      maxRetries: overrides.maxRetries ?? config.retryAttempts,
+      retryDelay: overrides.retryDelay ?? config.retryDelay,
+      fullSync: overrides.fullSync ?? false,
     }
   }
 
-  async syncContacts(options: SyncOptions = {}): Promise<void> {
-    const opts = { ...this.defaultOptions, ...options }
-    const syncId = `contacts_sync_${Date.now()}`
 
-    logger.info('Starting contacts sync', { syncId, options: opts })
+  async syncContacts(options: SyncOptions = {}): Promise<void> {
+    const opts = await this.getSyncOptions(options)
+    const syncId = `contacts_sync_${Date.now()}`
+    const startTime = Date.now()
+
+    // Get system user ID for logging
+    const userId = await SyncLogger.getSystemUserId()
+    const syncLogger = await SyncLogger.createSyncLogger(syncId, userId, 'contacts', 'sync')
+
+    let totalProcessed = 0
+    let totalSuccessful = 0
+    let totalFailed = 0
 
     try {
       await SyncStateManager.updateSyncState('contacts', {
@@ -151,9 +54,6 @@ export class SyncEngine {
       const checkpoint = await SyncStateManager.createCheckpoint(syncId, 'contacts')
 
       let page = 1
-      let totalProcessed = 0
-      let totalSuccessful = 0
-      let totalFailed = 0
       let hasMorePages = true
 
       while (hasMorePages) {
@@ -176,32 +76,32 @@ export class SyncEngine {
         for (const contactData of contacts) {
           try {
             await prisma.contact.upsert({
-              where: { b2chatId: contactData.id },
+              where: { b2chatId: contactData.contact_id },
               update: {
-                fullName: contactData.full_name,
-                mobile: contactData.mobile,
-                email: contactData.email,
-                identification: contactData.identification,
-                address: contactData.address,
-                city: contactData.city,
-                country: contactData.country,
-                company: contactData.company,
-                customAttributes: contactData.custom_attributes,
+                fullName: contactData.fullname || '',
+                mobile: contactData.mobile || undefined,
+                email: contactData.email || undefined,
+                identification: contactData.identification || undefined,
+                address: contactData.address || undefined,
+                city: contactData.city || undefined,
+                country: contactData.country || undefined,
+                company: contactData.company || undefined,
+                customAttributes: contactData.custom_attributes || undefined,
                 lastSyncAt: new Date(),
                 updatedAt: new Date(),
               },
               create: {
-                id: `contact_${contactData.id}`,
-                b2chatId: contactData.id,
-                fullName: contactData.full_name,
-                mobile: contactData.mobile,
-                email: contactData.email,
-                identification: contactData.identification,
-                address: contactData.address,
-                city: contactData.city,
-                country: contactData.country,
-                company: contactData.company,
-                customAttributes: contactData.custom_attributes,
+                id: `contact_${contactData.contact_id}`,
+                b2chatId: contactData.contact_id,
+                fullName: contactData.fullname || '',
+                mobile: contactData.mobile || undefined,
+                email: contactData.email || undefined,
+                identification: contactData.identification || undefined,
+                address: contactData.address || undefined,
+                city: contactData.city || undefined,
+                country: contactData.country || undefined,
+                company: contactData.company || undefined,
+                customAttributes: contactData.custom_attributes || undefined,
                 lastSyncAt: new Date(),
                 createdAt: new Date(),
                 updatedAt: new Date(),
@@ -210,7 +110,7 @@ export class SyncEngine {
             totalSuccessful++
           } catch (error) {
             logger.error('Failed to sync contact', {
-              contactId: contactData.id,
+              contactId: contactData.contact_id,
               error: error instanceof Error ? error.message : 'Unknown error'
             })
             totalFailed++
@@ -225,12 +125,12 @@ export class SyncEngine {
           failedRecords: totalFailed,
         })
 
-        logger.info('Contacts sync progress', {
-          syncId,
+        // Update sync log progress
+        await syncLogger.updateProgress(totalProcessed, {
           page,
-          processed: totalProcessed,
           successful: totalSuccessful,
-          failed: totalFailed
+          failed: totalFailed,
+          progress: `${page} pages processed`
         })
 
         page++
@@ -242,26 +142,36 @@ export class SyncEngine {
         completedAt: new Date(),
       })
 
+      const endTime = Date.now()
+      const syncDuration = endTime - startTime
+
       await SyncStateManager.updateSyncState('contacts', {
         syncStatus: 'completed',
         lastSyncTimestamp: new Date(),
+        totalRecords: totalProcessed,
+        successfulRecords: totalSuccessful,
+        failedRecords: totalFailed,
+        syncDuration,
       })
 
-      logger.info('Contacts sync completed', {
-        syncId,
-        total: totalProcessed,
+      // Complete sync log
+      await syncLogger.complete(totalProcessed, {
         successful: totalSuccessful,
-        failed: totalFailed
+        failed: totalFailed,
+        duration: syncDuration
       })
 
     } catch (error) {
-      logger.error('Contacts sync failed', {
-        syncId,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      })
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
 
       await SyncStateManager.updateSyncState('contacts', {
         syncStatus: 'failed',
+      })
+
+      // Log sync failure
+      await syncLogger.fail(errorMessage, totalProcessed, {
+        successful: totalSuccessful,
+        failed: totalFailed
       })
 
       throw error
@@ -269,10 +179,17 @@ export class SyncEngine {
   }
 
   async syncChats(options: SyncOptions = {}): Promise<void> {
-    const opts = { ...this.defaultOptions, ...options }
+    const opts = await this.getSyncOptions(options)
     const syncId = `chats_sync_${Date.now()}`
+    const startTime = Date.now()
 
-    logger.info('Starting chats sync', { syncId, options: opts })
+    // Get system user ID for logging
+    const userId = await SyncLogger.getSystemUserId()
+    const syncLogger = await SyncLogger.createSyncLogger(syncId, userId, 'chats', 'sync')
+
+    let totalProcessed = 0
+    let totalSuccessful = 0
+    let totalFailed = 0
 
     try {
       await SyncStateManager.updateSyncState('chats', {
@@ -283,9 +200,6 @@ export class SyncEngine {
       const checkpoint = await SyncStateManager.createCheckpoint(syncId, 'chats')
 
       let page = 1
-      let totalProcessed = 0
-      let totalSuccessful = 0
-      let totalFailed = 0
       let hasMorePages = true
 
       while (hasMorePages) {
@@ -307,43 +221,84 @@ export class SyncEngine {
 
         for (const chatData of chats) {
           try {
+            // Extract and upsert agent data if present
+            let agentId: string | null = null
+            let contactId: string | null = null
+
+            if (chatData.agent) {
+              agentId = await this.extractAndUpsertAgent(chatData.agent)
+            }
+
+            if (chatData.contact) {
+              contactId = await this.extractAndUpsertContact(chatData.contact)
+            }
+
+            // Map provider to our enum values
+            let provider = chatData.provider?.toLowerCase() || 'livechat'
+            if (!['whatsapp', 'facebook', 'telegram', 'livechat', 'b2cbotapi'].includes(provider)) {
+              provider = 'livechat' // Default fallback
+            }
+
+            // Map status to our enum values
+            let status = chatData.status?.toLowerCase() || 'pending'
+            if (!['open', 'closed', 'pending'].includes(status)) {
+              status = 'pending' // Default fallback
+            }
+
+            // Convert duration string to seconds
+            let durationInSeconds: number | null = null
+            if (chatData.duration && typeof chatData.duration === 'string') {
+              try {
+                // Parse "HH:MM:SS:MS" format to seconds
+                const parts = chatData.duration.split(':').map(p => parseInt(p) || 0)
+                if (parts.length >= 3) {
+                  const [hours, minutes, seconds] = parts
+                  durationInSeconds = hours * 3600 + minutes * 60 + seconds
+                }
+              } catch {
+                // If parsing fails, leave as null
+              }
+            } else if (typeof chatData.duration === 'number') {
+              durationInSeconds = chatData.duration
+            }
+
             await prisma.chat.upsert({
-              where: { b2chatId: chatData.id },
+              where: { b2chatId: chatData.chat_id },
               update: {
-                agentId: chatData.agent_id ? `agent_${chatData.agent_id}` : null,
-                contactId: chatData.contact_id ? `contact_${chatData.contact_id}` : null,
-                provider: chatData.provider,
-                status: chatData.status,
+                agentId,
+                contactId,
+                provider: provider as any,
+                status: status as any,
                 isAgentAvailable: chatData.is_agent_available,
-                createdAt: new Date(chatData.created_at),
+                createdAt: chatData.created_at ? new Date(chatData.created_at) : new Date(),
                 openedAt: chatData.opened_at ? new Date(chatData.opened_at) : null,
                 pickedUpAt: chatData.picked_up_at ? new Date(chatData.picked_up_at) : null,
-                responseAt: chatData.response_at ? new Date(chatData.response_at) : null,
+                responseAt: chatData.responded_at ? new Date(chatData.responded_at) : null,
                 closedAt: chatData.closed_at ? new Date(chatData.closed_at) : null,
-                duration: chatData.duration,
+                duration: durationInSeconds,
                 lastSyncAt: new Date(),
               },
               create: {
-                id: `chat_${chatData.id}`,
-                b2chatId: chatData.id,
-                agentId: chatData.agent_id ? `agent_${chatData.agent_id}` : null,
-                contactId: chatData.contact_id ? `contact_${chatData.contact_id}` : null,
-                provider: chatData.provider,
-                status: chatData.status,
+                id: `chat_${chatData.chat_id}`,
+                b2chatId: chatData.chat_id,
+                agentId,
+                contactId,
+                provider: provider as any,
+                status: status as any,
                 isAgentAvailable: chatData.is_agent_available,
-                createdAt: new Date(chatData.created_at),
+                createdAt: chatData.created_at ? new Date(chatData.created_at) : new Date(),
                 openedAt: chatData.opened_at ? new Date(chatData.opened_at) : null,
                 pickedUpAt: chatData.picked_up_at ? new Date(chatData.picked_up_at) : null,
-                responseAt: chatData.response_at ? new Date(chatData.response_at) : null,
+                responseAt: chatData.responded_at ? new Date(chatData.responded_at) : null,
                 closedAt: chatData.closed_at ? new Date(chatData.closed_at) : null,
-                duration: chatData.duration,
+                duration: durationInSeconds,
                 lastSyncAt: new Date(),
               },
             })
             totalSuccessful++
           } catch (error) {
             logger.error('Failed to sync chat', {
-              chatId: chatData.id,
+              chatId: chatData.chat_id,
               error: error instanceof Error ? error.message : 'Unknown error'
             })
             totalFailed++
@@ -358,12 +313,12 @@ export class SyncEngine {
           failedRecords: totalFailed,
         })
 
-        logger.info('Chats sync progress', {
-          syncId,
+        // Update sync log progress
+        await syncLogger.updateProgress(totalProcessed, {
           page,
-          processed: totalProcessed,
           successful: totalSuccessful,
-          failed: totalFailed
+          failed: totalFailed,
+          progress: `${page} pages processed`
         })
 
         page++
@@ -375,26 +330,36 @@ export class SyncEngine {
         completedAt: new Date(),
       })
 
+      const endTime = Date.now()
+      const syncDuration = endTime - startTime
+
       await SyncStateManager.updateSyncState('chats', {
         syncStatus: 'completed',
         lastSyncTimestamp: new Date(),
+        totalRecords: totalProcessed,
+        successfulRecords: totalSuccessful,
+        failedRecords: totalFailed,
+        syncDuration,
       })
 
-      logger.info('Chats sync completed', {
-        syncId,
-        total: totalProcessed,
+      // Complete sync log
+      await syncLogger.complete(totalProcessed, {
         successful: totalSuccessful,
-        failed: totalFailed
+        failed: totalFailed,
+        duration: syncDuration
       })
 
     } catch (error) {
-      logger.error('Chats sync failed', {
-        syncId,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      })
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
 
       await SyncStateManager.updateSyncState('chats', {
         syncStatus: 'failed',
+      })
+
+      // Log sync failure
+      await syncLogger.fail(errorMessage, totalProcessed, {
+        successful: totalSuccessful,
+        failed: totalFailed
       })
 
       throw error
@@ -402,19 +367,29 @@ export class SyncEngine {
   }
 
   async syncAll(options: SyncOptions = {}): Promise<void> {
-    logger.info('Starting full sync of all entities', { options })
+    const syncId = `full_sync_${Date.now()}`
+
+    // Get system user ID for logging
+    const userId = await SyncLogger.getSystemUserId()
+    const syncLogger = await SyncLogger.createSyncLogger(syncId, userId, 'all', 'full_sync')
 
     try {
-      // Sync in order: agents -> contacts -> chats
-      await this.syncAgents(options)
+      // Sync contacts and chats (agents not supported by B2Chat API)
       await this.syncContacts(options)
       await this.syncChats(options)
 
-      logger.info('Full sync completed successfully')
-    } catch (error) {
-      logger.error('Full sync failed', {
-        error: error instanceof Error ? error.message : 'Unknown error'
+      await syncLogger.complete(0, {
+        contacts_synced: true,
+        chats_synced: true,
+        operation: 'full_sync'
       })
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+
+      await syncLogger.fail(errorMessage, 0, {
+        operation: 'full_sync'
+      })
+
       throw error
     }
   }
@@ -422,5 +397,144 @@ export class SyncEngine {
   private async getLastSyncTime(entityType: EntityType): Promise<Date | undefined> {
     const syncState = await SyncStateManager.getLastSync(entityType)
     return syncState?.lastSyncTimestamp || undefined
+  }
+
+  /**
+   * Extract agent data from chat response and upsert to database
+   * Returns the agent ID for linking to chat
+   */
+  private async extractAndUpsertAgent(agentData: any): Promise<string | null> {
+    if (!agentData) return null
+
+    try {
+      // Extract agent fields from B2Chat response
+      // Based on API docs: agent.name, agent.username, agent.email
+      const name = agentData.name || agentData.full_name || null
+      const username = agentData.username || null
+      const email = agentData.email || null
+
+      // Skip if we don't have enough data to identify the agent
+      if (!name && !username && !email) {
+        return null
+      }
+
+      // Create a unique identifier for this agent
+      // Use username if available, otherwise use email, otherwise generate from name
+      let agentId: string
+      let b2chatId: string
+
+      if (username) {
+        agentId = `agent_${username.replace(/[^a-zA-Z0-9]/g, '_')}`
+        b2chatId = username
+      } else if (email) {
+        agentId = `agent_${email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '_')}`
+        b2chatId = email
+      } else {
+        agentId = `agent_${name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`
+        b2chatId = name
+      }
+
+      // Upsert agent record
+      const agent = await prisma.agent.upsert({
+        where: {
+          username: username || `extracted_${b2chatId}`
+        },
+        update: {
+          name: name || 'Unknown Agent',
+          email: email,
+          isActive: true, // Assume active if they're handling chats
+          lastSyncAt: new Date(),
+        },
+        create: {
+          id: agentId,
+          b2chatId,
+          name: name || 'Unknown Agent',
+          username: username || `extracted_${b2chatId}`,
+          email,
+          isActive: true,
+          lastSyncAt: new Date(),
+        }
+      })
+
+      return agent.id
+
+    } catch (error) {
+      logger.error('Failed to extract agent from chat data', {
+        agentData,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      })
+      return null
+    }
+  }
+
+  /**
+   * Extract contact data from chat response and upsert to database
+   * Returns the contact ID for linking to chat
+   */
+  private async extractAndUpsertContact(contactData: any): Promise<string | null> {
+    if (!contactData) return null
+
+    try {
+      // Extract contact fields from B2Chat response
+      const name = contactData.name || contactData.full_name || contactData.fullname || null
+      const email = contactData.email || null
+      const mobile = contactData.mobile_number || contactData.mobile || contactData.phone_number || null
+      const identification = contactData.identification || null
+
+      // Skip if we don't have enough data to identify the contact
+      if (!name && !email && !mobile) {
+        return null
+      }
+
+      // Create a unique identifier for this contact
+      let contactId: string
+      let b2chatId: string
+
+      if (identification) {
+        contactId = `contact_${identification.replace(/[^a-zA-Z0-9]/g, '_')}`
+        b2chatId = identification
+      } else if (mobile) {
+        contactId = `contact_${mobile.replace(/[^a-zA-Z0-9]/g, '_')}`
+        b2chatId = mobile
+      } else if (email) {
+        contactId = `contact_${email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '_')}`
+        b2chatId = email
+      } else {
+        contactId = `contact_${name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase()}`
+        b2chatId = name
+      }
+
+      // Upsert contact record
+      const contact = await prisma.contact.upsert({
+        where: {
+          b2chatId
+        },
+        update: {
+          fullName: name || 'Unknown Contact',
+          email,
+          mobile,
+          identification,
+          lastSyncAt: new Date(),
+        },
+        create: {
+          id: contactId,
+          b2chatId,
+          fullName: name || 'Unknown Contact',
+          email,
+          mobile,
+          identification,
+          lastSyncAt: new Date(),
+        }
+      })
+
+      return contact.id
+
+    } catch (error) {
+      logger.error('Failed to extract contact from chat data', {
+        contactData,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      })
+      return null
+    }
   }
 }

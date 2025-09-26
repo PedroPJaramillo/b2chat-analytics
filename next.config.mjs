@@ -7,6 +7,9 @@ const nextConfig = {
   images: {
     formats: ['image/webp', 'image/avif'],
   },
+  
+  // Output file tracing for deployment
+  outputFileTracingRoot: process.cwd(),
 };
 
 export default nextConfig;
