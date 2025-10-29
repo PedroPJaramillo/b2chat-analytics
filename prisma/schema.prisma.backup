@@ -1,0 +1,695 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model agents {
+  id              String          @id
+  b2chat_id       String          @unique
+  name            String
+  email           String?
+  username        String?         @unique
+  department_id   String?
+  is_active       Boolean         @default(true)
+  is_deleted      Boolean         @default(false)
+  deleted_at      DateTime?
+  deletion_reason String?
+  last_sync_at    DateTime?
+  created_at      DateTime        @default(now())
+  updated_at      DateTime
+  departments     departments?    @relation(fields: [department_id], references: [id])
+  analysis_kpis   analysis_kpis[]
+  chats           chats[]
+
+  @@index([b2chat_id])
+  @@index([department_id])
+  @@index([is_active])
+  @@index([is_deleted])
+  @@index([username])
+}
+
+model analysis_exports {
+  id                String            @id
+  analysis_id       String
+  format            ExportFormat
+  file_name         String
+  blob_url          String?
+  blob_key          String?
+  generated_by      String
+  file_size_bytes   Int               @default(0)
+  expires_at        DateTime?
+  created_at        DateTime          @default(now())
+  updated_at        DateTime
+  customer_analyses customer_analyses @relation(fields: [analysis_id], references: [id], onDelete: Cascade)
+  users             users             @relation(fields: [generated_by], references: [id])
+
+  @@index([analysis_id])
+  @@index([expires_at])
+}
+
+model analysis_kpis {
+  id                String            @id
+  analysis_id       String
+  metric_type       MetricType
+  metric_name       String
+  numeric_value     Float?
+  string_value      String?
+  json_value        Json?
+  agent_id          String?
+  category          String
+  created_at        DateTime          @default(now())
+  updated_at        DateTime
+  agents            agents?           @relation(fields: [agent_id], references: [id])
+  customer_analyses customer_analyses @relation(fields: [analysis_id], references: [id], onDelete: Cascade)
+
+  @@index([agent_id])
+  @@index([analysis_id, metric_type])
+  @@index([category])
+}
+
+model api_response_logs {
+  id             String   @id
+  sync_id        String
+  endpoint       String
+  request_params Json?
+  raw_response   Json?
+  response_size  Int
+  record_count   Int
+  api_timestamp  DateTime
+  created_at     DateTime @default(now())
+
+  @@index([api_timestamp])
+  @@index([sync_id])
+}
+
+model audit_logs {
+  id             String   @id
+  timestamp      DateTime
+  user_id        String?
+  user_email     String?
+  session_id     String?
+  ip_address     String?
+  user_agent     String?
+  event_type     String
+  severity       String
+  resource       String?
+  action         String?
+  details        Json?
+  metadata       Json?
+  success        Boolean  @default(true)
+  error_message  String?
+  request_id     String?
+  correlation_id String?
+  created_at     DateTime @default(now())
+  users          users?   @relation(fields: [user_id], references: [id])
+
+  @@index([correlation_id])
+  @@index([event_type])
+  @@index([resource])
+  @@index([severity])
+  @@index([timestamp])
+  @@index([user_id])
+}
+
+model chat_status_history {
+  id              String     @id
+  chat_id         String
+  previous_status ChatStatus
+  new_status      ChatStatus
+  changed_at      DateTime
+  sync_id         String?
+  transform_id    String?
+
+  @@index([chat_id, changed_at])
+  @@index([sync_id])
+}
+
+model chats {
+  id                       String                     @id
+  b2chat_id                String                     @unique
+  agent_id                 String?
+  contact_id               String?
+  department_id            String?
+  provider                 ChatProvider
+  status                   ChatStatus
+  is_agent_available       Boolean?
+  alias                    String?
+  tags                     String[]                   @default([])
+  priority                 ChatPriority               @default(normal)
+  topic                    String?
+  unread_count             Int                        @default(0)
+  resolution_note          String?
+  direction                ChatDirection              @default(incoming)
+  original_direction       ChatDirection?
+  created_at               DateTime
+  opened_at                DateTime?
+  picked_up_at             DateTime?
+  response_at              DateTime?
+  closed_at                DateTime?
+  duration                 Int?
+  poll_started_at          DateTime?
+  poll_completed_at        DateTime?
+  poll_abandoned_at        DateTime?
+  poll_response            Json?
+  is_deleted               Boolean                    @default(false)
+  deleted_at               DateTime?
+  deletion_reason          String?
+  last_modified_at         DateTime?
+  last_sync_at             DateTime?
+  sync_version             Int                        @default(1)
+  time_to_pickup           Int?
+  first_response_time      Int?
+  avg_response_time        Float?
+  resolution_time          Int?
+  pickup_sla               Boolean?
+  first_response_sla       Boolean?
+  avg_response_sla         Boolean?
+  resolution_sla           Boolean?
+  overall_sla              Boolean?
+  time_to_pickup_bh        Int?
+  first_response_time_bh   Int?
+  avg_response_time_bh     Float?
+  resolution_time_bh       Int?
+  pickup_sla_bh            Boolean?
+  first_response_sla_bh    Boolean?
+  avg_response_sla_bh      Boolean?
+  resolution_sla_bh        Boolean?
+  overall_sla_bh           Boolean?
+  agents                   agents?                    @relation(fields: [agent_id], references: [id])
+  contacts                 contacts?                  @relation(fields: [contact_id], references: [id])
+  departments              departments?               @relation(fields: [department_id], references: [id])
+  customer_categorizations customer_categorizations[]
+  effectiveness_analysis   effectiveness_analysis[]
+  messages                 messages[]
+
+  @@index([agent_id, created_at])
+  @@index([agent_id, overall_sla])
+  @@index([agent_id, status, created_at])
+  @@index([alias])
+  @@index([avg_response_sla])
+  @@index([b2chat_id])
+  @@index([contact_id, created_at])
+  @@index([department_id, created_at])
+  @@index([direction])
+  @@index([direction, status, created_at])
+  @@index([first_response_sla])
+  @@index([is_deleted])
+  @@index([last_modified_at])
+  @@index([opened_at, overall_sla])
+  @@index([overall_sla_bh])
+  @@index([overall_sla])
+  @@index([pickup_sla])
+  @@index([poll_abandoned_at])
+  @@index([poll_completed_at])
+  @@index([poll_started_at])
+  @@index([priority, status])
+  @@index([provider, created_at])
+  @@index([resolution_sla])
+  @@index([status, poll_started_at])
+  @@index([status, priority, last_modified_at])
+  @@index([tags])
+  @@index([topic])
+  @@index([unread_count])
+}
+
+model contacts {
+  id                String    @id
+  b2chat_id         String    @unique
+  full_name         String
+  mobile            String?
+  phone_number      String?
+  email             String?
+  identification    String?
+  address           String?
+  city              String?
+  country           String?
+  company           String?
+  custom_attributes Json?
+  tags              Json?
+  merchant_id       String?
+  b2chat_created_at DateTime?
+  b2chat_updated_at DateTime?
+  is_deleted        Boolean   @default(false)
+  deleted_at        DateTime?
+  deletion_reason   String?
+  last_sync_at      DateTime?
+  created_at        DateTime  @default(now())
+  updated_at        DateTime
+  chats             chats[]
+
+  @@index([b2chat_id])
+  @@index([email])
+  @@index([is_deleted])
+  @@index([merchant_id])
+  @@index([mobile])
+  @@index([phone_number])
+}
+
+model customer_analyses {
+  id                       String                     @id
+  status                   AnalysisStatus             @default(PENDING)
+  triggered_by             String
+  filters                  Json
+  total_chats_analyzed     Int                        @default(0)
+  total_messages_analyzed  Int                        @default(0)
+  ai_analysis_count        Int                        @default(0)
+  started_at               DateTime?
+  completed_at             DateTime?
+  error_message            String?
+  processing_time_ms       Int?
+  created_at               DateTime                   @default(now())
+  updated_at               DateTime
+  analysis_exports         analysis_exports[]
+  analysis_kpis            analysis_kpis[]
+  users                    users                      @relation(fields: [triggered_by], references: [id])
+  customer_categorizations customer_categorizations[]
+
+  @@index([status, created_at])
+  @@index([triggered_by, created_at])
+}
+
+model customer_categorizations {
+  id                  String            @id
+  analysis_id         String
+  chat_id             String
+  customer_intent     CustomerIntent?
+  journey_stage       JourneyStage?
+  sentiment           Sentiment?
+  agent_quality_score Int?
+  reasoning_notes     String?
+  confidence_score    Float?
+  created_at          DateTime          @default(now())
+  updated_at          DateTime
+  customer_analyses   customer_analyses @relation(fields: [analysis_id], references: [id], onDelete: Cascade)
+  chats               chats             @relation(fields: [chat_id], references: [id], onDelete: Cascade)
+
+  @@unique([analysis_id, chat_id])
+  @@index([analysis_id, customer_intent])
+  @@index([analysis_id, journey_stage])
+  @@index([analysis_id, sentiment])
+}
+
+model departments {
+  id                String        @id
+  b2chat_code       String        @unique
+  name              String
+  parent_id         String?
+  is_leaf           Boolean       @default(false)
+  is_active         Boolean       @default(true)
+  path              String?
+  level             Int           @default(0)
+  last_sync_at      DateTime?
+  created_at        DateTime      @default(now())
+  agents            agents[]
+  chats             chats[]
+  departments       departments?  @relation("departmentsTodepartments", fields: [parent_id], references: [id])
+  other_departments departments[] @relation("departmentsTodepartments")
+
+  @@index([b2chat_code])
+  @@index([is_active, is_leaf])
+  @@index([parent_id])
+  @@index([path])
+}
+
+model effectiveness_analysis {
+  id                    String   @id
+  chat_id               String
+  user_id               String
+  effectiveness_score   Float
+  response_time_score   Float
+  resolution_score      Float
+  customer_satisfaction Float?
+  analysis_data         Json
+  created_at            DateTime @default(now())
+  chats                 chats    @relation(fields: [chat_id], references: [id])
+  users                 users    @relation(fields: [user_id], references: [id])
+
+  @@index([chat_id])
+  @@index([effectiveness_score])
+  @@index([user_id])
+}
+
+model error_logs {
+  id             String   @id
+  level          String
+  message        String
+  error_code     String?
+  stack_trace    String?
+  user_id        String?
+  request_id     String?
+  correlation_id String?
+  source         String
+  metadata       Json?
+  timestamp      DateTime
+  created_at     DateTime @default(now())
+  users          users?   @relation(fields: [user_id], references: [id])
+
+  @@index([created_at])
+  @@index([level])
+  @@index([source])
+  @@index([timestamp])
+}
+
+model export_logs {
+  id           String    @id
+  user_id      String
+  export_type  String
+  file_name    String
+  file_url     String?
+  record_count Int
+  status       String
+  created_at   DateTime  @default(now())
+  completed_at DateTime?
+  expires_at   DateTime?
+  users        users     @relation(fields: [user_id], references: [id])
+
+  @@index([status])
+  @@index([user_id])
+}
+
+model extract_logs {
+  id                    String    @id
+  sync_id               String    @unique
+  entity_type           String
+  operation             String
+  started_at            DateTime
+  completed_at          DateTime?
+  status                String
+  api_call_count        Int       @default(0)
+  records_fetched       Int       @default(0)
+  total_pages           Int?
+  current_page          Int?
+  error_message         String?
+  date_range_from       DateTime?
+  date_range_to         DateTime?
+  time_range_preset     String?
+  user_id               String?
+  estimated_total       Int?
+  batch_size            Int       @default(100)
+  contact_filter_mobile String?
+  metadata              Json?
+
+  @@index([entity_type])
+  @@index([started_at])
+  @@index([status])
+  @@index([sync_id])
+}
+
+model messages {
+  id                String      @id
+  chat_id           String
+  b2chat_message_id String?     @unique
+  text              String?
+  type              MessageType
+  incoming          Boolean
+  image_url         String?
+  file_url          String?
+  caption           String?
+  local_image_path  String?
+  local_file_path   String?
+  media_backed_up   Boolean     @default(false)
+  media_size        Int?
+  media_mime_type   String?
+  timestamp         DateTime
+  last_sync_at      DateTime?
+  chats             chats       @relation(fields: [chat_id], references: [id], onDelete: Cascade)
+
+  @@index([chat_id, timestamp])
+  @@index([media_backed_up])
+  @@index([type])
+}
+
+model notifications {
+  id         String   @id
+  user_id    String
+  title      String
+  message    String
+  type       String
+  is_read    Boolean  @default(false)
+  metadata   Json?
+  created_at DateTime @default(now())
+  users      users    @relation(fields: [user_id], references: [id])
+
+  @@index([is_read])
+  @@index([user_id])
+}
+
+model raw_chats {
+  id                 String    @id
+  sync_id            String
+  b2chat_chat_id     String
+  raw_data           Json
+  api_page           Int
+  api_offset         Int
+  fetched_at         DateTime
+  processed_at       DateTime?
+  processing_status  String    @default("pending")
+  processing_error   String?
+  processing_attempt Int       @default(0)
+
+  @@index([b2chat_chat_id])
+  @@index([fetched_at])
+  @@index([processing_status])
+  @@index([sync_id])
+  @@index([sync_id, processing_status], map: "raw_chats_sync_status_idx")
+}
+
+model raw_contacts {
+  id                 String    @id
+  sync_id            String
+  b2chat_contact_id  String
+  raw_data           Json
+  api_page           Int
+  api_offset         Int
+  fetched_at         DateTime
+  processed_at       DateTime?
+  processing_status  String    @default("pending")
+  processing_error   String?
+  processing_attempt Int       @default(0)
+
+  @@index([b2chat_contact_id])
+  @@index([fetched_at])
+  @@index([processing_status])
+  @@index([sync_id])
+  @@index([sync_id, processing_status], map: "raw_contacts_sync_status_idx")
+}
+
+model sync_checkpoints {
+  id                 String    @id
+  sync_id            String
+  entity_type        String
+  total_records      Int?
+  processed_records  Int       @default(0)
+  successful_records Int       @default(0)
+  failed_records     Int       @default(0)
+  failure_details    Json?
+  checkpoint         String?
+  status             String
+  created_at         DateTime  @default(now())
+  updated_at         DateTime
+  completed_at       DateTime?
+
+  @@index([entity_type])
+  @@index([sync_id])
+}
+
+model sync_logs {
+  id            String    @id
+  user_id       String
+  entity_type   String
+  operation     String
+  record_count  Int
+  status        String
+  started_at    DateTime
+  completed_at  DateTime?
+  error_message String?
+  metadata      Json?
+  users         users     @relation(fields: [user_id], references: [id])
+
+  @@index([entity_type])
+  @@index([status])
+  @@index([user_id])
+}
+
+model sync_states {
+  id                  String    @id
+  entity_type         String    @unique
+  last_sync_timestamp DateTime?
+  last_synced_id      String?
+  last_sync_offset    Int?
+  sync_status         String
+  total_records       Int       @default(0)
+  successful_records  Int       @default(0)
+  failed_records      Int       @default(0)
+  sync_duration       Int?
+  created_at          DateTime  @default(now())
+  updated_at          DateTime
+}
+
+model sync_validation_results {
+  id               String   @id
+  sync_id          String
+  transform_id     String?
+  entity_type      String
+  validation_name  String
+  severity         String
+  affected_records Int
+  details          Json
+  created_at       DateTime @default(now())
+
+  @@index([severity])
+  @@index([sync_id])
+  @@index([transform_id])
+  @@index([validation_name])
+}
+
+model system_settings {
+  id                String   @id
+  key               String   @unique
+  value             String
+  category          String
+  description       String?
+  is_system_setting Boolean  @default(false)
+  user_id           String?
+  created_at        DateTime @default(now())
+  updated_at        DateTime
+  users             users?   @relation(fields: [user_id], references: [id])
+
+  @@index([category])
+}
+
+model transform_logs {
+  id                  String    @id
+  sync_id             String    @unique
+  extract_sync_id     String?
+  entity_type         String
+  started_at          DateTime
+  completed_at        DateTime?
+  status              String
+  records_processed   Int       @default(0)
+  records_created     Int       @default(0)
+  records_updated     Int       @default(0)
+  records_skipped     Int       @default(0)
+  records_failed      Int       @default(0)
+  validation_warnings Int       @default(0)
+  error_message       String?
+  user_id             String?
+  changes_summary     Json?
+
+  @@index([entity_type])
+  @@index([extract_sync_id])
+  @@index([started_at])
+  @@index([status])
+}
+
+model users {
+  id                     String                   @id
+  email                  String                   @unique
+  name                   String?
+  role                   UserRole
+  created_at             DateTime                 @default(now())
+  updated_at             DateTime
+  analysis_exports       analysis_exports[]
+  audit_logs             audit_logs[]
+  customer_analyses      customer_analyses[]
+  effectiveness_analysis effectiveness_analysis[]
+  error_logs             error_logs[]
+  export_logs            export_logs[]
+  notifications          notifications[]
+  sync_logs              sync_logs[]
+  system_settings        system_settings[]
+}
+
+enum AnalysisStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  PARTIAL
+}
+
+enum ChatDirection {
+  incoming
+  outgoing
+  outgoing_broadcast
+}
+
+enum ChatPriority {
+  urgent
+  high
+  normal
+  low
+}
+
+enum ChatProvider {
+  whatsapp
+  facebook
+  telegram
+  livechat
+  b2cbotapi
+}
+
+enum ChatStatus {
+  open
+  closed
+  pending
+  BOT_CHATTING
+  OPENED
+  PICKED_UP
+  RESPONDED_BY_AGENT
+  CLOSED
+  COMPLETING_POLL
+  COMPLETED_POLL
+  ABANDONED_POLL
+}
+
+enum CustomerIntent {
+  PROJECT_INFO
+  PAYMENT
+  LEGAL
+  POST_PURCHASE
+  OTHER
+}
+
+enum ExportFormat {
+  PDF
+  CSV
+}
+
+enum JourneyStage {
+  PROSPECT
+  ACTIVE_BUYER
+  POST_PURCHASE
+}
+
+enum MessageType {
+  text
+  image
+  file
+}
+
+enum MetricType {
+  RESPONSE_TIME
+  VOLUME
+  PEAK_TIME
+  CUSTOMER_INTENT
+  JOURNEY_STAGE
+  SENTIMENT
+  AGENT_QUALITY
+  CHANNEL_USAGE
+}
+
+enum Sentiment {
+  POSITIVE
+  NEUTRAL
+  FRICTION
+}
+
+enum UserRole {
+  Manager
+  Admin
+}

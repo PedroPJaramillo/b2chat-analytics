@@ -24,8 +24,11 @@ const AuditQuerySchema = z.object({
 })
 
 export async function GET(request: NextRequest) {
+  let userId: string | null = null;
+
   try {
-    const { userId } = await auth()
+    const authResult = await auth()
+    userId = authResult.userId
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -119,8 +122,9 @@ export async function GET(request: NextRequest) {
 
     const hasMore = auditLogs.length > limit
 
-    // Get summary statistics
-    const stats = await auditLogger.getAuditStats(timeRange)
+    // Get summary statistics (map 6h to 24h for stats)
+    const statsTimeRange = timeRange === '6h' ? '24h' : timeRange
+    const stats = await auditLogger.getAuditStats(statsTimeRange)
 
     // Get event trends (simplified)
     const eventTrends = getEventTrends(events)
@@ -169,7 +173,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     logger.error('Audit API error', {
       error: error instanceof Error ? error.message : 'Unknown error',
-      userId,
+      userId: userId ?? undefined,
     })
 
     return NextResponse.json(

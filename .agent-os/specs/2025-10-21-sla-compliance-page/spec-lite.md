@@ -1,0 +1,3 @@
+# Spec Summary (Lite)
+
+Build a comprehensive SLA Compliance analytics page that enables customer service managers to track and improve service level agreement adherence across all customer support chats. The page displays four core SLA metrics (pickup time, first response time, average response time, and resolution time) with visual compliance indicators, provides agent performance comparison charts, enables detailed investigation of SLA breaches through an expandable table with full conversation views, and supports toggling between business hours and wall clock calculations. Managers can identify performance issues, compare agents, investigate root causes of failures, and export breach data for review meetings.

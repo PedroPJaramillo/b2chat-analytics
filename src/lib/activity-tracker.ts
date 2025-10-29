@@ -163,7 +163,7 @@ export class SessionTracker {
     return cleaned
   }
 
-  private static extractIP(request?: NextRequest): string | undefined {
+  public static extractIP(request?: NextRequest): string | undefined {
     if (!request) return undefined
 
     return (
@@ -462,14 +462,14 @@ export function createActivityTracker(options: {
     }
 
     // Track data access
-    if (options.trackDataAccess && this.isDataEndpoint(pathname)) {
-      const { dataType, operation } = this.parseDataEndpoint(pathname, request.method)
+    if (options.trackDataAccess && isDataEndpoint(pathname)) {
+      const { dataType, operation } = parseDataEndpoint(pathname, request.method)
       await ActivityTracker.trackDataAccess(
         userId,
         dataType,
         operation,
         undefined, // Record count would need to be extracted from response
-        this.extractFilters(request),
+        extractFilters(request),
         request
       )
     }

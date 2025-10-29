@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Menu } from "lucide-react"
 import { Sidebar } from "./sidebar"
+import { ModeToggle } from "@/components/theme/mode-toggle"
 
 export function Header() {
   return (
@@ -37,7 +38,8 @@ export function Header() {
           <div className="w-full flex-1 md:w-auto md:flex-none">
             {/* Search bar could go here */}
           </div>
-          <nav className="flex items-center">
+          <nav className="flex items-center gap-2">
+            <ModeToggle />
             <UserButton
               afterSignOutUrl="/"
               appearance={{

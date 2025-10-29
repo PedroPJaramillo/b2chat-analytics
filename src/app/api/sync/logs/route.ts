@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { prisma } from '@/lib/prisma'
 import { logger } from '@/lib/logger'
+import { syncCancellationManager } from '@/lib/sync/cancellation'
 import { z } from 'zod'
 
 export const dynamic = 'force-dynamic'
@@ -17,8 +18,11 @@ const logsQuerySchema = z.object({
 })
 
 export async function GET(request: NextRequest) {
+  let userId: string | null = null;
+
   try {
-    const { userId } = await auth()
+    const authResult = await auth()
+    userId = authResult.userId
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -89,6 +93,39 @@ export async function GET(request: NextRequest) {
     const hasNextPage = page < totalPages
     const hasPreviousPage = page > 1
 
+    // Get active syncs and statistics
+    const activeSyncIds = syncCancellationManager.getActiveSyncIds()
+    const activeSyncs = logs.filter(log =>
+      activeSyncIds.includes(log.id) &&
+      (log.status === 'running' || log.status === 'started')
+    )
+
+    // Calculate statistics for last 24 hours
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    const [completedCount, failedCount, totalLast24h] = await Promise.all([
+      prisma.syncLog.count({
+        where: {
+          status: 'completed',
+          startedAt: { gte: twentyFourHoursAgo }
+        }
+      }),
+      prisma.syncLog.count({
+        where: {
+          status: 'failed',
+          startedAt: { gte: twentyFourHoursAgo }
+        }
+      }),
+      prisma.syncLog.count({
+        where: {
+          startedAt: { gte: twentyFourHoursAgo }
+        }
+      })
+    ])
+
+    const successRate = totalLast24h > 0
+      ? Math.round((completedCount / totalLast24h) * 100)
+      : 0
+
     return NextResponse.json({
       data: logs,
       pagination: {
@@ -99,6 +136,19 @@ export async function GET(request: NextRequest) {
         hasNextPage,
         hasPreviousPage,
       },
+      statistics: {
+        activeCount: activeSyncs.length,
+        completedLast24h: completedCount,
+        failedLast24h: failedCount,
+        successRate
+      },
+      activeSyncs: activeSyncs.map(sync => ({
+        ...sync,
+        metadata: sync.metadata || {},
+        duration: sync.completedAt
+          ? new Date(sync.completedAt).getTime() - new Date(sync.startedAt).getTime()
+          : Date.now() - new Date(sync.startedAt).getTime()
+      })),
       filters: {
         entityType: query.entityType,
         status: query.status,
@@ -129,8 +179,11 @@ export async function GET(request: NextRequest) {
 
 // Get aggregated sync log statistics
 export async function POST(request: NextRequest) {
+  let userId: string | null = null;
+
   try {
-    const { userId } = await auth()
+    const authResult = await auth()
+    userId = authResult.userId
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }

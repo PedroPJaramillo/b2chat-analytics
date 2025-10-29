@@ -1,5 +1,6 @@
 "use client"
 
+import { useId } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -47,6 +48,7 @@ interface SyncConfigModalProps {
 export function SyncConfigModal({ open, onOpenChange }: SyncConfigModalProps) {
   const { config, loading, saving, saveConfig } = useSyncConfig()
   const { toast } = useToast()
+  const descriptionId = useId()
 
   const form = useForm<SyncConfigFormValues>({
     resolver: zodResolver(syncConfigSchema),
@@ -91,10 +93,13 @@ export function SyncConfigModal({ open, onOpenChange }: SyncConfigModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent
+        className="sm:max-w-[500px]"
+        aria-describedby={descriptionId}
+      >
         <DialogHeader>
           <DialogTitle>Sync Configuration</DialogTitle>
-          <DialogDescription>
+          <DialogDescription id={descriptionId}>
             Configure sync settings and schedule for data synchronization
           </DialogDescription>
         </DialogHeader>

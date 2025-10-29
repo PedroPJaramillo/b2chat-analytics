@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState, useMemo, useId, useCallback } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   useReactTable,
   getCoreRowModel,
@@ -35,7 +35,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
-import { AlertCircle, CheckCircle, Clock, RefreshCw, ChevronLeft, ChevronRight, Calendar, Filter, ArrowUpDown } from "lucide-react"
+import { Progress } from "@/components/ui/progress"
+import { useToast } from "@/hooks/use-toast"
+import { AlertCircle, CheckCircle, Clock, RefreshCw, ChevronLeft, ChevronRight, Calendar, Filter, ArrowUpDown, XCircle, Activity, TrendingUp, Database } from "lucide-react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 
 interface SyncLog {
@@ -113,9 +115,11 @@ async function fetchSyncLogs(params: {
     limit: params.limit.toString(),
   })
 
-  if (params.entityType) searchParams.set('entityType', params.entityType)
-  if (params.status) searchParams.set('status', params.status)
-  if (params.operation) searchParams.set('operation', params.operation)
+  const shouldInclude = (value?: string) => value && value !== 'all'
+
+  if (shouldInclude(params.entityType) && params.entityType) searchParams.set('entityType', params.entityType)
+  if (shouldInclude(params.status) && params.status) searchParams.set('status', params.status)
+  if (shouldInclude(params.operation) && params.operation) searchParams.set('operation', params.operation)
   if (params.dateFrom) searchParams.set('dateFrom', params.dateFrom)
   if (params.dateTo) searchParams.set('dateTo', params.dateTo)
 
@@ -126,28 +130,89 @@ async function fetchSyncLogs(params: {
   return response.json()
 }
 
+async function cancelSync(syncId: string, reason?: string) {
+  const response = await fetch('/api/sync/cancel', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ syncId, reason })
+  })
+  if (!response.ok) {
+    let errorMessage = 'Failed to cancel sync'
+    try {
+      const errorBody = await response.json()
+      errorMessage = errorBody.error || errorBody.message || errorMessage
+    } catch {
+      // ignore JSON parse errors
+    }
+    throw new Error(errorMessage)
+  }
+  return response.json()
+}
+
 const columnHelper = createColumnHelper<SyncLog>()
 
 export function SyncLogsModal({ open, onOpenChange }: SyncLogsModalProps) {
+  const descriptionId = useId()
   const [page, setPage] = useState(1)
   const [limit] = useState(20)
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
   const [filters, setFilters] = useState({
-    entityType: '',
-    status: '',
-    operation: '',
+    entityType: 'all',
+    status: 'all',
+    operation: 'all',
     dateFrom: '',
     dateTo: '',
   })
   const [showFilters, setShowFilters] = useState(false)
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
+  const { toast } = useToast()
+  const queryClient = useQueryClient()
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['sync-logs', page, limit, filters],
     queryFn: () => fetchSyncLogs({ page, limit, ...filters }),
     enabled: open,
-    refetchInterval: 30000, // Refresh every 30 seconds
   })
+
+  const cancelMutation = useMutation({
+    mutationFn: ({ syncId, reason }: { syncId: string; reason?: string }) =>
+      cancelSync(syncId, reason),
+    onSuccess: (result) => {
+      toast({
+        title: "Sync Cancelled",
+        description: result.message,
+      })
+      refetch()
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Cancel Failed",
+        description: error.message,
+        variant: "destructive",
+      })
+    },
+  })
+
+  const handleCancelSync = useCallback((syncId: string) => {
+    cancelMutation.mutate({ syncId, reason: 'User requested cancellation' })
+  }, [cancelMutation])
+
+  const handleCancelAll = useCallback(() => {
+    cancelMutation.mutate({ syncId: 'all', reason: 'User requested cancellation of all syncs' })
+  }, [cancelMutation])
+
+  const toggleRowExpansion = (rowId: string) => {
+    setExpandedRows(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(rowId)) {
+        newSet.delete(rowId)
+      } else {
+        newSet.add(rowId)
+      }
+      return newSet
+    })
+  }
 
   const columns = useMemo(() => [
     columnHelper.accessor('status', {
@@ -254,7 +319,28 @@ export function SyncLogsModal({ open, onOpenChange }: SyncLogsModalProps) {
         ) : null
       },
     }),
-  ], [])
+    columnHelper.display({
+      id: 'actions',
+      header: 'Actions',
+      cell: ({ row }) => {
+        const status = row.original.status
+        const isCancelable = status === 'running' || status === 'started'
+        if (!isCancelable) return null
+
+        return (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => handleCancelSync(row.original.id)}
+            disabled={cancelMutation.isPending}
+          >
+            <XCircle className="h-4 w-4 mr-1" />
+            Cancel
+          </Button>
+        )
+      },
+    }),
+  ], [cancelMutation.isPending, handleCancelSync])
 
   const table = useReactTable({
     data: data?.data || [],
@@ -280,9 +366,9 @@ export function SyncLogsModal({ open, onOpenChange }: SyncLogsModalProps) {
 
   const clearFilters = () => {
     setFilters({
-      entityType: '',
-      status: '',
-      operation: '',
+      entityType: 'all',
+      status: 'all',
+      operation: 'all',
       dateFrom: '',
       dateTo: '',
     })
@@ -290,20 +376,147 @@ export function SyncLogsModal({ open, onOpenChange }: SyncLogsModalProps) {
     setPage(1)
   }
 
+  const statistics = data?.statistics
+  const activeSyncs = data?.activeSyncs || []
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent
+        className="flex max-h-[90vh] max-w-6xl flex-col overflow-hidden"
+        aria-describedby={descriptionId}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <RefreshCw className="h-5 w-5" />
             Sync Logs
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription id={descriptionId}>
             View and monitor data synchronization logs and operations
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-4 flex-1 overflow-hidden">
+          {/* Statistics Cards */}
+          {statistics && (
+            <div className="grid grid-cols-4 gap-3">
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Active Syncs</p>
+                      <p className="text-2xl font-bold">{statistics.activeCount}</p>
+                    </div>
+                    <Activity className="h-8 w-8 text-blue-500" />
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Completed (24h)</p>
+                      <p className="text-2xl font-bold">{statistics.completedLast24h}</p>
+                    </div>
+                    <CheckCircle className="h-8 w-8 text-green-500" />
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Failed (24h)</p>
+                      <p className="text-2xl font-bold">{statistics.failedLast24h}</p>
+                    </div>
+                    <AlertCircle className="h-8 w-8 text-red-500" />
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Success Rate</p>
+                      <p className="text-2xl font-bold">{statistics.successRate}%</p>
+                    </div>
+                    <TrendingUp className="h-8 w-8 text-green-500" />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Active Syncs Section */}
+          {activeSyncs.length > 0 && (
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Active Sync Operations
+                  </CardTitle>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCancelAll}
+                    disabled={cancelMutation.isPending}
+                  >
+                    <XCircle className="h-4 w-4 mr-2" />
+                    Cancel All
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {activeSyncs.map((sync: any) => (
+                  <div key={sync.id} className="border rounded-lg p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="default">{sync.entityType}</Badge>
+                        <span className="text-sm font-medium">{sync.id.substring(0, 8)}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {formatDuration(sync.startedAt, null)}
+                        </span>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleCancelSync(sync.id)}
+                        disabled={cancelMutation.isPending}
+                      >
+                        <XCircle className="h-4 w-4 mr-1" />
+                        Cancel
+                      </Button>
+                    </div>
+                    {sync.metadata?.progress !== undefined && (
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <span>Progress</span>
+                          <span>{Math.round(sync.metadata.progress)}%</span>
+                        </div>
+                        <Progress value={sync.metadata.progress} className="h-2" />
+                      </div>
+                    )}
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div>
+                        <span className="text-muted-foreground">Records: </span>
+                        {sync.recordCount || 0}
+                      </div>
+                      {sync.metadata?.currentRate && (
+                        <div>
+                          <span className="text-muted-foreground">Rate: </span>
+                          {sync.metadata.currentRate.toFixed(1)}/s
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-muted-foreground">User: </span>
+                        {sync.user?.name || sync.user?.email || 'Unknown'}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
           {/* Filters */}
           <Card>
             <CardHeader className="pb-3">
@@ -345,10 +558,9 @@ export function SyncLogsModal({ open, onOpenChange }: SyncLogsModalProps) {
                         <SelectValue placeholder="All types" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">All types</SelectItem>
+                        <SelectItem value="all">All types</SelectItem>
                         <SelectItem value="contacts">Contacts</SelectItem>
                         <SelectItem value="chats">Chats</SelectItem>
-                        <SelectItem value="all">All</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -363,7 +575,7 @@ export function SyncLogsModal({ open, onOpenChange }: SyncLogsModalProps) {
                         <SelectValue placeholder="All statuses" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">All statuses</SelectItem>
+                        <SelectItem value="all">All statuses</SelectItem>
                         <SelectItem value="started">Started</SelectItem>
                         <SelectItem value="running">Running</SelectItem>
                         <SelectItem value="completed">Completed</SelectItem>
@@ -382,7 +594,7 @@ export function SyncLogsModal({ open, onOpenChange }: SyncLogsModalProps) {
                         <SelectValue placeholder="All operations" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">All operations</SelectItem>
+                        <SelectItem value="all">All operations</SelectItem>
                         <SelectItem value="sync">Sync</SelectItem>
                         <SelectItem value="full_sync">Full Sync</SelectItem>
                       </SelectContent>

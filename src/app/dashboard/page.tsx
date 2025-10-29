@@ -1,5 +1,7 @@
 "use client"
 
+import { useMemo } from "react"
+import Link from "next/link"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
@@ -16,23 +18,75 @@ import {
 import { useDashboardStats } from "@/hooks/use-dashboard-stats"
 import { useAgents } from "@/hooks/use-agents"
 import { useDashboardActivity } from "@/hooks/use-dashboard-activity"
+import { EmptyStateInline } from "@/components/empty-state"
+import { Database } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from "@/components/ui/tooltip"
+import { pageContainerClasses } from "@/lib/ui-utils"
 
 export default function DashboardPage() {
   const { data: stats, loading: statsLoading, error: statsError } = useDashboardStats()
   const { data: agents, loading: agentsLoading } = useAgents()
   const { data: activities, loading: activitiesLoading } = useDashboardActivity()
+
+  const maxChats = useMemo(
+    () => agents && agents.length > 0 ? Math.max(...agents.map(a => a.activeChats)) : 0,
+    [agents]
+  )
+
+  const renderBadge = () => {
+    if (statsLoading) {
+      return <Badge variant="outline" className="text-muted-foreground">Loading metrics…</Badge>
+    }
+
+    if (statsError) {
+      return <Badge variant="destructive">Data unavailable</Badge>
+    }
+
+    if (stats && stats.totalChats > 0) {
+      return <Badge variant="outline" className="bg-primary/10 text-primary">Live Data</Badge>
+    }
+
+    return (
+      <TooltipProvider delayDuration={150}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link href="/dashboard/sync" className="inline-flex">
+              <Badge variant="secondary" className="cursor-pointer">
+                No Data — Run Sync
+              </Badge>
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent side="left">
+            Launch a B2Chat sync to populate dashboard metrics.
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    )
+  }
+
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
-      <div className="flex items-center justify-between space-y-2">
+    <div className={pageContainerClasses}>
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
         <div className="flex items-center space-x-2">
-          {stats?.totalChats && stats.totalChats > 0 ? (
-            <Badge variant="outline">Live Data</Badge>
-          ) : (
-            <Badge variant="secondary">No Data - Run B2Chat Sync</Badge>
-          )}
+          {renderBadge()}
         </div>
       </div>
+
+      {statsError && !statsLoading && (
+        <Alert variant="destructive">
+          <AlertTitle>Unable to load dashboard metrics</AlertTitle>
+          <AlertDescription>
+            {statsError}
+          </AlertDescription>
+        </Alert>
+      )}
 
       <Tabs defaultValue="overview" className="space-y-4">
         <TabsList>
@@ -42,7 +96,7 @@ export default function DashboardPage() {
 
         <TabsContent value="overview" className="space-y-4">
           {/* Key Metrics Cards */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total Agents</CardTitle>
@@ -104,10 +158,16 @@ export default function DashboardPage() {
                 {statsLoading ? (
                   <Skeleton className="h-8 w-16" />
                 ) : (
-                  <div className="text-2xl font-bold">{stats?.satisfactionRate || 0}%</div>
+                  <div className="text-2xl font-bold">
+                    {stats?.satisfactionRate !== null && stats?.satisfactionRate !== undefined
+                      ? `${stats.satisfactionRate}%`
+                      : 'N/A'}
+                  </div>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  +{stats?.trends.satisfactionChange || 0}% from last month
+                  {stats?.satisfactionRate !== null && stats?.satisfactionRate !== undefined
+                    ? `${stats.trends.satisfactionChange >= 0 ? '+' : ''}${stats.trends.satisfactionChange}% from last month`
+                    : 'No rating data available'}
                 </p>
               </CardContent>
             </Card>
@@ -148,9 +208,11 @@ export default function DashboardPage() {
                     </div>
                   ))
                 ) : (
-                  <div className="flex items-center justify-center h-24">
-                    <p className="text-sm text-muted-foreground">No recent activity</p>
-                  </div>
+                  <EmptyStateInline
+                    icon={Activity}
+                    title="No recent activity"
+                    description="Activity will appear here as agents interact with customers"
+                  />
                 )}
               </CardContent>
             </Card>
@@ -176,7 +238,6 @@ export default function DashboardPage() {
                 ) : agents.length > 0 ? (
                   agents.slice(0, 3).map((agent, index) => {
                     const colors = ['bg-green-500', 'bg-yellow-500', 'bg-blue-500']
-                    const maxChats = Math.max(...agents.map(a => a.activeChats))
                     const progressValue = maxChats > 0 ? (agent.activeChats / maxChats) * 100 : 0
 
                     return (
@@ -193,10 +254,11 @@ export default function DashboardPage() {
                     )
                   })
                 ) : (
-                  <div className="flex flex-col items-center justify-center h-24 text-center">
-                    <p className="text-sm text-muted-foreground mb-2">No agent data available</p>
-                    <p className="text-xs text-muted-foreground">Run B2Chat sync to populate agent data from chats</p>
-                  </div>
+                  <EmptyStateInline
+                    icon={Database}
+                    title="No agent data available"
+                    description="Run B2Chat sync to populate agent data from chats"
+                  />
                 )}
               </CardContent>
             </Card>
@@ -204,7 +266,7 @@ export default function DashboardPage() {
         </TabsContent>
 
         <TabsContent value="analytics" className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Chat Volume</CardTitle>
@@ -231,10 +293,16 @@ export default function DashboardPage() {
                 {statsLoading ? (
                   <Skeleton className="h-8 w-16" />
                 ) : (
-                  <div className="text-2xl font-bold">{stats?.satisfactionRate || 0}%</div>
+                  <div className="text-2xl font-bold">
+                    {stats?.satisfactionRate !== null && stats?.satisfactionRate !== undefined
+                      ? `${stats.satisfactionRate}%`
+                      : 'N/A'}
+                  </div>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  +{stats?.trends.satisfactionChange || 0}% from last month
+                  {stats?.satisfactionRate !== null && stats?.satisfactionRate !== undefined
+                    ? `${stats.trends.satisfactionChange >= 0 ? '+' : ''}${stats.trends.satisfactionChange}% from last month`
+                    : 'No rating data available'}
                 </p>
               </CardContent>
             </Card>

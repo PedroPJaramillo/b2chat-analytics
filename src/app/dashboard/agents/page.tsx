@@ -1,13 +1,18 @@
 "use client"
 
+import { useState, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { MoreHorizontal, Activity, Clock, MessageSquare } from "lucide-react"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { MoreHorizontal, Activity, Clock, MessageSquare, Edit, Trash, Power } from "lucide-react"
 import { useAgents } from "@/hooks/use-agents"
+import { pageContainerClasses } from "@/lib/ui-utils"
 
 const getStatusBadge = (status: string) => {
   switch (status) {
@@ -23,18 +28,242 @@ const getStatusBadge = (status: string) => {
 }
 
 export default function AgentsPage() {
-  const { data: agents, loading, error } = useAgents()
+  const { data: agents, loading, error, refetch } = useAgents()
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false)
+  const [newAgent, setNewAgent] = useState({ name: "", email: "" })
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [editingAgent, setEditingAgent] = useState<any>(null)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+
+  // Calculate avgResponseTime - must be before early returns to follow Rules of Hooks
+  const avgResponseTime = useMemo(() => {
+    if (!agents || agents.length === 0) return '0'
+    const sum = agents.reduce((acc, agent) => {
+      const minutes = parseFloat(agent.avgResponseTime.replace('m', ''))
+      return acc + minutes
+    }, 0)
+    return (sum / agents.length).toFixed(1)
+  }, [agents])
+
+  if (loading) {
+    return (
+      <div className={pageContainerClasses}>
+        <div className="flex items-center justify-between space-y-2">
+          <h2 className="text-3xl font-bold tracking-tight">Agents</h2>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i}>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <Skeleton className="h-4 w-24" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-8 w-16 mb-2" />
+                <Skeleton className="h-3 w-32" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-6 w-32" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-64 w-full" />
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className={pageContainerClasses}>
+        <div className="flex items-center justify-between space-y-2">
+          <h2 className="text-3xl font-bold tracking-tight">Agents</h2>
+        </div>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center text-red-600">
+              <p className="font-semibold">Error loading agents</p>
+              <p className="text-sm text-muted-foreground mt-1">{error}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  const handleAddAgent = async () => {
+    if (!newAgent.name || !newAgent.email) return
+
+    setIsSubmitting(true)
+    try {
+      const response = await fetch('/api/agents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newAgent)
+      })
+
+      if (!response.ok) throw new Error('Failed to add agent')
+
+      setIsAddDialogOpen(false)
+      setNewAgent({ name: "", email: "" })
+      refetch()
+    } catch (error) {
+      console.error('Error adding agent:', error)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleEditAgent = async () => {
+    if (!editingAgent?.name || !editingAgent?.email) return
+
+    setIsSubmitting(true)
+    try {
+      const response = await fetch(`/api/agents/${editingAgent.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editingAgent.name, email: editingAgent.email })
+      })
+
+      if (!response.ok) throw new Error('Failed to update agent')
+
+      setIsEditDialogOpen(false)
+      setEditingAgent(null)
+      refetch()
+    } catch (error) {
+      console.error('Error updating agent:', error)
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleToggleStatus = async (agentId: string, currentStatus: string) => {
+    try {
+      const newStatus = currentStatus === 'online' ? 'offline' : 'online'
+      const response = await fetch(`/api/agents/${agentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: newStatus === 'online' })
+      })
+
+      if (!response.ok) throw new Error('Failed to update agent status')
+
+      refetch()
+    } catch (error) {
+      console.error('Error updating agent status:', error)
+    }
+  }
+
+  const handleDeleteAgent = async (agentId: string) => {
+    if (!confirm('Are you sure you want to delete this agent?')) return
+
+    try {
+      const response = await fetch(`/api/agents/${agentId}`, {
+        method: 'DELETE'
+      })
+
+      if (!response.ok) throw new Error('Failed to delete agent')
+
+      refetch()
+    } catch (error) {
+      console.error('Error deleting agent:', error)
+    }
+  }
+
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+    <div className={pageContainerClasses}>
       <div className="flex items-center justify-between space-y-2">
         <h2 className="text-3xl font-bold tracking-tight">Agents</h2>
         <div className="flex items-center space-x-2">
-          <Button>Add Agent</Button>
+          <Button onClick={() => setIsAddDialogOpen(true)}>Add Agent</Button>
         </div>
       </div>
 
+      <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Agent</DialogTitle>
+            <DialogDescription>
+              Create a new agent to handle customer conversations.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="name">Name</Label>
+              <Input
+                id="name"
+                value={newAgent.name}
+                onChange={(e) => setNewAgent({ ...newAgent, name: e.target.value })}
+                placeholder="John Doe"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={newAgent.email}
+                onChange={(e) => setNewAgent({ ...newAgent, email: e.target.value })}
+                placeholder="john@example.com"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddAgent} disabled={isSubmitting || !newAgent.name || !newAgent.email}>
+              {isSubmitting ? "Adding..." : "Add Agent"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Agent</DialogTitle>
+            <DialogDescription>
+              Update agent information.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="edit-name">Name</Label>
+              <Input
+                id="edit-name"
+                value={editingAgent?.name || ""}
+                onChange={(e) => setEditingAgent({ ...editingAgent, name: e.target.value })}
+                placeholder="John Doe"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="edit-email">Email</Label>
+              <Input
+                id="edit-email"
+                type="email"
+                value={editingAgent?.email || ""}
+                onChange={(e) => setEditingAgent({ ...editingAgent, email: e.target.value })}
+                placeholder="john@example.com"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleEditAgent} disabled={isSubmitting || !editingAgent?.name || !editingAgent?.email}>
+              {isSubmitting ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Agents</CardTitle>
@@ -43,7 +272,7 @@ export default function AgentsPage() {
           <CardContent>
             <div className="text-2xl font-bold">{agents.length}</div>
             <p className="text-xs text-muted-foreground">
-              +2 from last month
+              Active agents in system
             </p>
           </CardContent>
         </Card>
@@ -58,7 +287,7 @@ export default function AgentsPage() {
               {agents.filter(agent => agent.status === "online").length}
             </div>
             <p className="text-xs text-muted-foreground">
-              {Math.round((agents.filter(agent => agent.status === "online").length / agents.length) * 100)}% availability
+              {agents.length > 0 ? Math.round((agents.filter(agent => agent.status === "online").length / agents.length) * 100) : 0}% availability
             </p>
           </CardContent>
         </Card>
@@ -84,7 +313,7 @@ export default function AgentsPage() {
             <Clock className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">2.1m</div>
+            <div className="text-2xl font-bold">{avgResponseTime}m</div>
             <p className="text-xs text-muted-foreground">
               Across all agents
             </p>
@@ -117,17 +346,9 @@ export default function AgentsPage() {
               {agents.map((agent) => (
                 <TableRow key={agent.id}>
                   <TableCell className="font-medium">
-                    <div className="flex items-center space-x-3">
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src="" alt={agent.name} />
-                        <AvatarFallback>
-                          {agent.name.split(' ').map(n => n[0]).join('')}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <div className="font-medium">{agent.name}</div>
-                        <div className="text-sm text-muted-foreground">{agent.email}</div>
-                      </div>
+                    <div>
+                      <div className="font-medium">{agent.name}</div>
+                      <div className="text-sm text-muted-foreground">{agent.email}</div>
                     </div>
                   </TableCell>
                   <TableCell>
@@ -137,12 +358,46 @@ export default function AgentsPage() {
                   <TableCell>{agent.avgResponseTime}</TableCell>
                   <TableCell>{agent.totalChats}</TableCell>
                   <TableCell>
-                    <div className="font-medium">{agent.satisfaction}%</div>
+                    <div className="font-medium">
+                      {agent.satisfaction !== null && agent.satisfaction !== undefined
+                        ? `${agent.satisfaction}%`
+                        : 'N/A'}
+                    </div>
                   </TableCell>
                   <TableCell>
-                    <Button variant="ghost" className="h-8 w-8 p-0">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" className="h-8 w-8 p-0">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setEditingAgent(agent)
+                            setIsEditDialogOpen(true)
+                          }}
+                        >
+                          <Edit className="mr-2 h-4 w-4" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => handleToggleStatus(agent.id, agent.status)}
+                        >
+                          <Power className="mr-2 h-4 w-4" />
+                          {agent.status === 'online' ? 'Set Offline' : 'Set Online'}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-red-600"
+                          onClick={() => handleDeleteAgent(agent.id)}
+                        >
+                          <Trash className="mr-2 h-4 w-4" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </TableCell>
                 </TableRow>
               ))}

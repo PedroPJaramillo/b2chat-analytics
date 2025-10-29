@@ -2,11 +2,18 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { prisma } from '@/lib/prisma'
 
+// Force dynamic rendering for authenticated routes
 export const dynamic = 'force-dynamic'
 
+// Revalidate every 30 seconds for activity feed
+export const revalidate = 30
+
 export async function GET() {
+  let userId: string | null = null;
+
   try {
-    const { userId } = await auth()
+    const authResult = await auth()
+    userId = authResult.userId
     if (!userId) {
       return new NextResponse('Unauthorized', { status: 401 })
     }

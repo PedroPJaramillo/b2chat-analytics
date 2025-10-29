@@ -105,8 +105,8 @@ export class HealthMonitor {
     // Run all health checks in parallel
     const checkPromises = Array.from(this.healthChecks.entries()).map(
       async ([name, checkFn]) => {
+        const checkStart = Date.now()
         try {
-          const checkStart = Date.now()
           const result = await checkFn()
           result.duration = Date.now() - checkStart
           return result

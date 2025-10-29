@@ -18,7 +18,7 @@ const SyncConfigSchema = z.object({
 
 const DEFAULT_CONFIG = {
   interval: 1440, // minutes (24 hours)
-  batchSize: 100,
+  batchSize: 1000,
   autoSync: true,
   fullSync: false,
   retryAttempts: 3,
@@ -26,9 +26,12 @@ const DEFAULT_CONFIG = {
 }
 
 export async function GET(req: NextRequest) {
+  let userId: string | null = null;
+
   try {
     // Check authentication
-    const { userId } = await auth()
+    const authResult = await auth()
+    userId = authResult.userId
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -85,9 +88,12 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
+  let userId: string | null = null;
+
   try {
     // Check authentication
-    const { userId } = await auth()
+    const authResult = await auth()
+    userId = authResult.userId
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }

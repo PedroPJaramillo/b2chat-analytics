@@ -7,8 +7,11 @@ import { dashboardRateLimit } from '@/lib/rate-limit'
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
+  let userId: string | null = null;
+
   try {
-    const { userId } = await auth()
+    const authResult = await auth()
+    userId = authResult.userId
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -53,7 +56,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     logger.error('Health check API error', {
       error: error instanceof Error ? error.message : 'Unknown error',
-      userId,
+      userId: userId ?? undefined,
     })
 
     return NextResponse.json(

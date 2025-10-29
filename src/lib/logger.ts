@@ -1,45 +1,37 @@
-interface LogContext {
-  [key: string]: any
-}
+/**
+ * Legacy Logger Interface - Backwards Compatibility Wrapper
+ *
+ * This file maintains backwards compatibility with existing code
+ * while using the new Pino-based logger under the hood.
+ *
+ * For new code, prefer importing from './logger-pino'
+ */
+
+import { logger as pinoLogger, type LogContext } from './logger-pino'
 
 class Logger {
   info(message: string, context?: LogContext) {
-    console.log(JSON.stringify({
-      level: 'info',
-      message,
-      timestamp: new Date().toISOString(),
-      ...context
-    }))
+    pinoLogger.info(message, context)
   }
 
-  error(message: string, context?: LogContext & { error?: string }) {
-    console.error(JSON.stringify({
-      level: 'error',
-      message,
-      timestamp: new Date().toISOString(),
-      ...context
-    }))
+  error(message: string, context?: LogContext & { error?: string | Error }) {
+    pinoLogger.error(message, context).catch(err => {
+      // Fallback to console if async error logging fails
+      console.error('Logger error:', err)
+    })
   }
 
   warn(message: string, context?: LogContext) {
-    console.warn(JSON.stringify({
-      level: 'warn',
-      message,
-      timestamp: new Date().toISOString(),
-      ...context
-    }))
+    pinoLogger.warn(message, context)
   }
 
   debug(message: string, context?: LogContext) {
-    if (process.env.NODE_ENV === 'development') {
-      console.debug(JSON.stringify({
-        level: 'debug',
-        message,
-        timestamp: new Date().toISOString(),
-        ...context
-      }))
-    }
+    pinoLogger.debug(message, context)
   }
 }
 
+// Export legacy logger instance for backwards compatibility
 export const logger = new Logger()
+
+// Re-export types for convenience
+export type { LogContext }

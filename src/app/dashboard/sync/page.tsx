@@ -1,127 +1,73 @@
 "use client"
 
-import { useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useState, useEffect } from 'react'
+import { pageContainerClasses } from "@/lib/ui-utils"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useToast } from "@/hooks/use-toast"
 import {
   Database,
-  RefreshCw,
-  CheckCircle,
-  AlertCircle,
-  Clock,
   Users,
   MessageSquare,
-  Settings
 } from "lucide-react"
-import { useSync } from "@/hooks/use-sync"
-import { useSyncConfig } from "@/hooks/use-sync-config"
 import { useSyncStats } from "@/hooks/use-sync-stats"
-import { SyncConfigModal } from "@/components/sync/sync-config-modal"
+import { useExtract } from "@/hooks/use-extract"
+import { useTransform } from "@/hooks/use-transform"
 import { SyncLogsModal } from "@/components/sync/sync-logs-modal"
-
-const moduleIcons = {
-  "Contacts": Users,
-  "Chats": MessageSquare
-}
-
-const getStatusIcon = (status: string) => {
-  switch (status) {
-    case "completed":
-      return <CheckCircle className="h-4 w-4 text-green-600" />
-    case "running":
-      return <RefreshCw className="h-4 w-4 text-blue-600 animate-spin" />
-    case "failed":
-      return <AlertCircle className="h-4 w-4 text-red-600" />
-    default:
-      return <Clock className="h-4 w-4 text-gray-400" />
-  }
-}
-
-const getStatusBadge = (status: string) => {
-  switch (status) {
-    case "completed":
-      return <Badge variant="default" className="bg-green-100 text-green-800">Completed</Badge>
-    case "running":
-      return <Badge variant="default" className="bg-blue-100 text-blue-800">Running</Badge>
-    case "failed":
-      return <Badge variant="destructive">Failed</Badge>
-    default:
-      return <Badge variant="outline">Pending</Badge>
-  }
-}
+import { ExtractStageControls } from "@/components/sync/extract-stage-controls"
+import { TransformStageControls } from "@/components/sync/transform-stage-controls"
+import { ExtractHistoryTable } from "@/components/sync/extract-history-table"
+import { TransformHistoryTable } from "@/components/sync/transform-history-table"
 
 export default function SyncPage() {
-  const { syncStatus, modules, loading, error, syncing, triggerSync } = useSync()
-  const { config } = useSyncConfig()
   const { stats, loading: statsLoading } = useSyncStats()
-  const { toast } = useToast()
-  const [configModalOpen, setConfigModalOpen] = useState(false)
+  const { extracting, batches, loadingBatches, triggerExtract, fetchBatches, cancelExtract } = useExtract()
+  const { transforming, results, triggerTransform, fetchAllTransforms, cancelTransform } = useTransform()
+
   const [logsModalOpen, setLogsModalOpen] = useState(false)
+  const [selectedTimeRange, setSelectedTimeRange] = useState<'1d' | '7d' | '30d' | '90d' | 'full'>('full')
+  const [allTransforms, setAllTransforms] = useState<any[]>([])
+  const [loadingAllTransforms, setLoadingAllTransforms] = useState(false)
+  const formatCount = (value: number | null | undefined, fallback = '0') =>
+    typeof value === 'number' ? value.toLocaleString() : fallback
 
-  const handleSyncNow = async () => {
+  // Fetch all transforms on mount
+  const handleRefreshAllTransforms = async () => {
+    setLoadingAllTransforms(true)
     try {
-      await triggerSync('all', config.fullSync)
-      toast({
-        title: "Sync Started",
-        description: `Data synchronization has been initiated successfully${config.fullSync ? ' (Full Sync)' : ''}.`,
-      })
-    } catch (error) {
-      toast({
-        title: "Sync Failed",
-        description: error instanceof Error ? error.message : "Failed to start synchronization",
-        variant: "destructive",
-      })
+      const transforms = await fetchAllTransforms()
+      setAllTransforms(transforms)
+    } finally {
+      setLoadingAllTransforms(false)
     }
   }
 
-  const handleModuleSync = async (entityType: 'contacts' | 'chats') => {
-    try {
-      await triggerSync(entityType, config.fullSync)
-      toast({
-        title: "Module Sync Started",
-        description: `${entityType} synchronization has been initiated successfully${config.fullSync ? ' (Full Sync)' : ''}.`,
-      })
-    } catch (error) {
-      toast({
-        title: "Module Sync Failed",
-        description: error instanceof Error ? error.message : `Failed to sync ${entityType}`,
-        variant: "destructive",
-      })
-    }
-  }
+  // Load transforms on mount
+  useEffect(() => {
+    handleRefreshAllTransforms()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  const formatDate = (dateString: string) => {
-    try {
-      return new Date(dateString).toLocaleString()
-    } catch {
-      return dateString
-    }
-  }
+  const syncedContacts = stats?.synced?.contacts
+  const syncedChats = stats?.synced?.chats
+  const contactsNeedingSync = stats?.synced?.contactsNeedingSync ?? 0 // Fix 006: Stub contacts
+  const b2chatContacts = stats?.b2chat?.contacts
+  const b2chatChats = stats?.b2chat?.chats
+  const rawContacts = stats?.raw?.contacts
+  const rawChats = stats?.raw?.chats
+  const contactsSyncPercentage = stats?.syncPercentage?.contacts ?? 0
+  const chatsSyncPercentage = stats?.syncPercentage?.chats ?? 0
 
-  const formatNextSync = (dateString: string) => {
-    try {
-      const nextSync = new Date(dateString)
-      const now = new Date()
-      const diff = Math.max(0, Math.floor((nextSync.getTime() - now.getTime()) / 1000 / 60))
-      return `${diff}m`
-    } catch {
-      return "15m"
-    }
-  }
-
-  if (loading) {
+  if (statsLoading) {
     return (
-      <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+      <div className={pageContainerClasses}>
         <div className="flex items-center justify-between space-y-2">
-          <h2 className="text-3xl font-bold tracking-tight">Data Sync</h2>
+          <h2 className="text-3xl font-bold tracking-tight">Data Synchronization</h2>
           <Badge variant="secondary">Admin Only</Badge>
         </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
           {Array.from({ length: 4 }).map((_, i) => (
             <Card key={i}>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -131,6 +77,7 @@ export default function SyncPage() {
               <CardContent>
                 <Skeleton className="h-8 w-16 mb-2" />
                 <Skeleton className="h-3 w-32" />
+                <Skeleton className="h-3 w-32 mt-2" />
               </CardContent>
             </Card>
           ))}
@@ -140,281 +87,117 @@ export default function SyncPage() {
   }
 
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
-      <div className="flex items-center justify-between space-y-2">
-        <h2 className="text-3xl font-bold tracking-tight">Data Sync</h2>
-        <div className="flex items-center space-x-2">
+    <div className={pageContainerClasses}>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Data Synchronization</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Two-stage sync: Extract → Transform
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setLogsModalOpen(true)}
+          >
+            <Database className="mr-2 h-4 w-4" />
+            View Logs
+          </Button>
           <Badge variant="secondary">Admin Only</Badge>
         </div>
       </div>
 
-      {error && (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="pt-6">
-            <div className="flex items-center space-x-2">
-              <AlertCircle className="h-4 w-4 text-red-600" />
-              <span className="text-red-800">{error}</span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* B2Chat vs Synced Records */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {/* Quick Stats - Processed Data */}
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* Processed Contacts */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">B2Chat Records</CardTitle>
-            <Database className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Contacts</CardTitle>
+            <Users className="h-4 w-4 text-purple-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {statsLoading ? 'Loading...' : stats?.b2chat.total.toLocaleString() || 'N/A'}
+              {statsLoading ? 'Loading...' : formatCount(syncedContacts, 'N/A')}
             </div>
-            <p className="text-xs text-muted-foreground">Total in B2Chat</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Synced Records</CardTitle>
-            <Database className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {statsLoading ? 'Loading...' : stats?.synced.total.toLocaleString() || 'N/A'}
-            </div>
-            <p className="text-xs text-muted-foreground">Total synced locally</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Sync Progress</CardTitle>
-            <Database className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {statsLoading ? 'Loading...' : `${stats?.syncPercentage.overall || 0}%`}
-            </div>
-            <p className="text-xs text-muted-foreground">Overall completion</p>
-            {!statsLoading && stats && (
+            <p className="text-xs text-muted-foreground">
+              {statsLoading ? '' : `${formatCount(b2chatContacts)} in B2Chat (${contactsSyncPercentage}% synced)`}
+            </p>
+            {rawContacts && rawContacts.total > 0 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                {formatCount(rawContacts.total)} in staging ({formatCount(rawContacts.pending)} pending)
+              </p>
+            )}
+            {/* Fix 006: Stub contact indicator */}
+            {contactsNeedingSync > 0 && (
               <div className="mt-2">
-                <Progress value={stats.syncPercentage.overall} className="h-2" />
+                <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-700 hover:bg-amber-200">
+                  {formatCount(contactsNeedingSync)} need full sync
+                </Badge>
               </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Processed Chats */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Chats</CardTitle>
+            <MessageSquare className="h-4 w-4 text-orange-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {statsLoading ? 'Loading...' : formatCount(syncedChats, 'N/A')}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {statsLoading ? '' : `${formatCount(b2chatChats)} in B2Chat (${chatsSyncPercentage}% synced)`}
+            </p>
+            {rawChats && rawChats.total > 0 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                {formatCount(rawChats.total)} in staging ({formatCount(rawChats.pending)} pending)
+              </p>
             )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Sync Overview */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Last Sync</CardTitle>
-            <Database className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {syncStatus?.status === 'completed' ? 'Success' :
-               syncStatus?.status === 'running' ? 'Running' :
-               syncStatus?.status === 'failed' ? 'Failed' : 'Pending'}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {syncStatus?.lastSync ? formatDate(syncStatus.lastSync) : 'Never'}
-            </p>
-          </CardContent>
-        </Card>
+      {/* Two-Stage Sync Controls */}
+      <ExtractStageControls
+        selectedTimeRange={selectedTimeRange}
+        onTimeRangeChange={setSelectedTimeRange}
+        onExtract={triggerExtract}
+        extracting={extracting}
+        batches={batches}
+        loadingBatches={loadingBatches}
+        onRefreshBatches={fetchBatches}
+        onCancel={cancelExtract}
+      />
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Records</CardTitle>
-            <Database className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {syncStatus?.totalRecords?.toLocaleString() || 'N/A'}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Synchronized
-            </p>
-          </CardContent>
-        </Card>
+      <Separator />
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Next Sync</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {syncStatus?.nextSync ? formatNextSync(syncStatus.nextSync) : '15m'}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {syncStatus?.nextSync ? formatDate(syncStatus.nextSync) : 'Scheduled'}
-            </p>
-          </CardContent>
-        </Card>
+      <TransformStageControls
+        onTransform={triggerTransform}
+        transforming={transforming}
+        results={results}
+        onCancel={cancelTransform}
+      />
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Status</CardTitle>
-            <RefreshCw className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center space-x-2">
-              {getStatusIcon(syncStatus?.status || 'pending')}
-              <span className="text-2xl font-bold">
-                {syncing ? 'Syncing' : 'Active'}
-              </span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Auto-sync enabled
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+      <Separator />
 
-      {/* Sync Controls */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Sync Controls</CardTitle>
-          <CardDescription>
-            Manage data synchronization with B2Chat API
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center space-x-4">
-            <Button
-              onClick={handleSyncNow}
-              disabled={syncing}
-            >
-              <RefreshCw className={`mr-2 h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-              {syncing ? 'Syncing...' : 'Sync Now'}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => setConfigModalOpen(true)}
-            >
-              <Settings className="mr-2 h-4 w-4" />
-              Configure
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => setLogsModalOpen(true)}
-            >
-              <Database className="mr-2 h-4 w-4" />
-              View Logs
-            </Button>
-          </div>
+      {/* Extract History */}
+      <ExtractHistoryTable
+        batches={batches}
+        loading={loadingBatches}
+        onRefresh={fetchBatches}
+      />
 
-          <Separator />
+      <Separator />
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Current Progress</span>
-              <span className="text-sm text-muted-foreground">
-                {syncStatus?.progress || 0}%
-              </span>
-            </div>
-            <Progress value={syncStatus?.progress || 0} className="h-2" />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Sync Modules Status */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Module Status</CardTitle>
-          <CardDescription>
-            Individual sync status for each data module
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {modules.map((module, index) => {
-              const IconComponent = moduleIcons[module.name as keyof typeof moduleIcons] || Database
-              return (
-                <div key={index} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center space-x-4">
-                    <IconComponent className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <div className="font-medium">{module.name}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {module.records.toLocaleString()} records • Duration: {module.duration}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-4">
-                    <div className="text-right">
-                      <div className="text-sm text-muted-foreground">Last sync</div>
-                      <div className="text-sm font-medium">
-                        {formatDate(module.lastSync)}
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      {getStatusBadge(module.status)}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleModuleSync(module.name.toLowerCase() as 'contacts' | 'chats')}
-                        disabled={syncing}
-                      >
-                        <RefreshCw className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Sync Configuration */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Configuration</CardTitle>
-          <CardDescription>
-            Sync settings and schedule configuration
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Sync Interval</label>
-              <div className="text-2xl font-bold">{config.interval} minutes</div>
-              <p className="text-xs text-muted-foreground">
-                Automatic synchronization frequency
-              </p>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Batch Size</label>
-              <div className="text-2xl font-bold">{config.batchSize} records</div>
-              <p className="text-xs text-muted-foreground">
-                Records processed per batch
-              </p>
-            </div>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-2">
-            <label className="text-sm font-medium">API Connection</label>
-            <div className="flex items-center space-x-2">
-              <CheckCircle className="h-4 w-4 text-green-600" />
-              <span className="text-sm">Connected to B2Chat API</span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Last connection test: {syncStatus?.lastSync ? formatDate(syncStatus.lastSync) : 'Never'}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Configuration Modal */}
-      <SyncConfigModal
-        open={configModalOpen}
-        onOpenChange={setConfigModalOpen}
+      {/* Transform History */}
+      <TransformHistoryTable
+        transforms={allTransforms}
+        loading={loadingAllTransforms}
+        onRefresh={handleRefreshAllTransforms}
       />
 
       {/* Logs Modal */}

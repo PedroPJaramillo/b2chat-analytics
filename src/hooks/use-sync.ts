@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
+import { useSyncConfig } from './use-sync-config'
 
 interface SyncStatus {
   lastSync: string
@@ -19,6 +20,7 @@ interface ModuleStatus {
 }
 
 export function useSync() {
+  const { config: syncConfig } = useSyncConfig()
   const [syncStatus, setSyncStatus] = useState<SyncStatus | null>(null)
   const [modules, setModules] = useState<ModuleStatus[]>([])
   const [loading, setLoading] = useState(true)
@@ -92,7 +94,12 @@ export function useSync() {
     }
   }
 
-  const triggerSync = async (entityType: 'contacts' | 'chats' | 'all' = 'all', fullSync?: boolean) => {
+  const triggerSync = async (
+    entityType: 'contacts' | 'chats' | 'all' = 'all',
+    fullSync?: boolean,
+    timeRangePreset?: '1d' | '7d' | '30d' | '90d' | 'custom' | 'full',
+    dateRange?: { startDate?: string; endDate?: string }
+  ) => {
     try {
       setSyncing(true)
       setError(null)
@@ -105,8 +112,10 @@ export function useSync() {
         body: JSON.stringify({
           entityType,
           options: {
-            batchSize: 100,
-            fullSync: fullSync ?? false
+            batchSize: syncConfig.batchSize,
+            fullSync: fullSync ?? false,
+            timeRangePreset,
+            dateRange
           }
         }),
       })

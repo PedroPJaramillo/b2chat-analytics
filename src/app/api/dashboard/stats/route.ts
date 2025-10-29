@@ -5,11 +5,18 @@ import { withCache, generateCacheKey, invalidateRelatedCache } from '@/lib/cache
 import { dashboardRateLimit } from '@/lib/rate-limit'
 import { logger } from '@/lib/logger'
 
+// Force dynamic rendering for authenticated routes
 export const dynamic = 'force-dynamic'
 
+// Revalidate every 30 seconds - dashboard stats change frequently
+export const revalidate = 30
+
 export async function GET(request: NextRequest) {
+  let userId: string | null = null;
+
   try {
-    const { userId } = await auth()
+    const authResult = await auth()
+    userId = authResult.userId
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -40,7 +47,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(dashboardStats)
   } catch (error) {
     logger.error('Error fetching dashboard stats', {
-      userId,
+      userId: userId ?? undefined,
       error: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined
     })
@@ -186,37 +193,9 @@ async function calculateDashboardStats(
     ? Math.round(((chatStats.today - chatStats.yesterday) / chatStats.yesterday) * 100)
     : 0
 
-    // Calculate satisfaction rate based on chat duration and response times
-    // This is a simplified metric based on available data until we have actual ratings
-    let satisfactionRate = 0
-  if (chatStats.total > 0) {
-    // Base satisfaction on response time efficiency
-    const avgResponseMinutes = parseFloat(avgResponseTimeMinutes)
-    if (avgResponseMinutes === 0) {
-      satisfactionRate = 95 // No data yet, default to good rating
-    } else if (avgResponseMinutes < 2) {
-      satisfactionRate = 95 // Excellent response time
-    } else if (avgResponseMinutes < 5) {
-      satisfactionRate = 90 // Good response time
-    } else if (avgResponseMinutes < 10) {
-      satisfactionRate = 85 // Acceptable response time
-    } else if (avgResponseMinutes < 15) {
-      satisfactionRate = 75 // Needs improvement
-    } else {
-      satisfactionRate = 65 // Poor response time
-    }
-
-    // Adjust based on active vs total agents ratio (agent availability)
-    const agentAvailability = agentStats.total > 0 ? (agentStats.active / agentStats.total) : 0
-    if (agentAvailability > 0.8) {
-      satisfactionRate = Math.min(100, satisfactionRate + 5) // Bonus for high availability
-    } else if (agentAvailability < 0.3) {
-      satisfactionRate = Math.max(0, satisfactionRate - 10) // Penalty for low availability
-    }
-  } else {
-    // No chats yet, show neutral satisfaction
-    satisfactionRate = 85
-  }
+  // TODO: Calculate satisfaction rate from actual customer ratings/feedback
+  // Currently set to null until a rating system is implemented
+  const satisfactionRate = null
 
   return {
     totalAgents: agentStats.total,

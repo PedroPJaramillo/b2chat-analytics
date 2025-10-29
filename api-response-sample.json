@@ -1,0 +1,186 @@
+{
+  "request": {
+    "url": "https://api.b2chat.io/chats/export?limit=5&offset=0&date_range_from=2025-09-02&date_range_to=2025-10-02",
+    "method": "GET",
+    "queryParams": {
+      "limit": 5,
+      "offset": 0,
+      "date_range_from": "2025-09-02",
+      "date_range_to": "2025-10-02"
+    }
+  },
+  "response": {
+    "chats": [
+      {
+        "agent": {
+          "email": "vpalacio@pactar.co",
+          "name": "Vanessa Palacio",
+          "username": "iregino"
+        },
+        "alias": "573153597774-Pactar",
+        "chat_id": "0d9d3004-f25d-400d-83d4-8278eec77b39",
+        "closed_at": null,
+        "contact": {
+          "custom_attributes": null,
+          "email": "",
+          "id": 63494354,
+          "identification": "",
+          "mobile_number": "+573043737228",
+          "name": "Fernanda Montoya",
+          "phone_number": "",
+          "tags": null
+        },
+        "created_at": "2025-10-01 17:07:45",
+        "department": null,
+        "duration": null,
+        "is_agent_available": true,
+        "messages": [],
+        "opened_at": "2025-10-01 17:07:45",
+        "picked_up_at": "2025-10-01 17:07:45",
+        "provider": "WHATSAPPB2CHAT",
+        "responded_at": "2025-10-01 17:09:06",
+        "status": "RESPONDED_BY_AGENT",
+        "tags": [],
+        "viewer_url": "https://app.b2chat.io/viewer/0d9d3004-f25d-400d-83d4-8278eec77b39/b3a7e7a3-47a9-4204-bff2-14fc9b67c144"
+      },
+      {
+        "agent": {
+          "email": "vpalacio@pactar.co",
+          "name": "Vanessa Palacio",
+          "username": "iregino"
+        },
+        "alias": "573153597774-Pactar",
+        "chat_id": "d41e7f94-ffce-4804-99b5-6981cf3a2326",
+        "closed_at": null,
+        "contact": {
+          "custom_attributes": null,
+          "email": "",
+          "id": 63294932,
+          "identification": "",
+          "mobile_number": "+573017178289",
+          "name": "Daniel Vanegas",
+          "phone_number": "",
+          "tags": null
+        },
+        "created_at": "2025-10-01 16:49:01",
+        "department": null,
+        "duration": null,
+        "is_agent_available": true,
+        "messages": [],
+        "opened_at": "2025-10-01 16:49:01",
+        "picked_up_at": "2025-10-01 16:49:01",
+        "provider": "WHATSAPPB2CHAT",
+        "responded_at": null,
+        "status": "PICKED_UP",
+        "tags": [],
+        "viewer_url": "https://app.b2chat.io/viewer/d41e7f94-ffce-4804-99b5-6981cf3a2326/b3a7e7a3-47a9-4204-bff2-14fc9b67c144"
+      },
+      {
+        "agent": {
+          "email": "vpalacio@pactar.co",
+          "name": "Vanessa Palacio",
+          "username": "iregino"
+        },
+        "alias": "573153597774-Pactar",
+        "chat_id": "b57b12f7-5038-4278-90e9-7f12587b6d0e",
+        "closed_at": null,
+        "contact": {
+          "custom_attributes": null,
+          "email": "",
+          "id": 63299256,
+          "identification": "",
+          "mobile_number": "+573135984250",
+          "name": "ALEJANDRA ",
+          "phone_number": "",
+          "tags": null
+        },
+        "created_at": "2025-10-01 16:44:39",
+        "department": null,
+        "duration": null,
+        "is_agent_available": true,
+        "messages": [],
+        "opened_at": "2025-10-01 16:44:39",
+        "picked_up_at": "2025-10-01 16:44:39",
+        "provider": "WHATSAPPB2CHAT",
+        "responded_at": "2025-10-01 17:08:18",
+        "status": "RESPONDED_BY_AGENT",
+        "tags": [],
+        "viewer_url": "https://app.b2chat.io/viewer/b57b12f7-5038-4278-90e9-7f12587b6d0e/b3a7e7a3-47a9-4204-bff2-14fc9b67c144"
+      },
+      {
+        "agent": {
+          "email": "vpalacio@pactar.co",
+          "name": "Vanessa Palacio",
+          "username": "iregino"
+        },
+        "alias": "573153597774-Pactar",
+        "chat_id": "c6d6c040-9764-4d9d-ac54-975ff3674072",
+        "closed_at": null,
+        "contact": {
+          "custom_attributes": null,
+          "email": "",
+          "id": 63493404,
+          "identification": "",
+          "mobile_number": "573145158316",
+          "name": "Sandra Duque",
+          "phone_number": "",
+          "tags": null
+        },
+        "created_at": "2025-10-01 16:42:19",
+        "department": null,
+        "duration": null,
+        "is_agent_available": true,
+        "messages": [],
+        "opened_at": "2025-10-01 16:42:19",
+        "picked_up_at": "2025-10-01 16:42:19",
+        "provider": "WHATSAPPB2CHAT",
+        "responded_at": null,
+        "status": "PICKED_UP",
+        "tags": [],
+        "viewer_url": "https://app.b2chat.io/viewer/c6d6c040-9764-4d9d-ac54-975ff3674072/b3a7e7a3-47a9-4204-bff2-14fc9b67c144"
+      },
+      {
+        "agent": {
+          "email": "vpalacio@pactar.co",
+          "name": "Vanessa Palacio",
+          "username": "iregino"
+        },
+        "alias": "573153597774-Pactar",
+        "chat_id": "ce8f824e-3d9d-4aae-a6c5-d70df137f3c7",
+        "closed_at": null,
+        "contact": {
+          "custom_attributes": null,
+          "email": "",
+          "id": 63493329,
+          "identification": "",
+          "mobile_number": "+573137729296",
+          "name": "Gustavo Perez",
+          "phone_number": "",
+          "tags": null
+        },
+        "created_at": "2025-10-01 16:39:40",
+        "department": null,
+        "duration": null,
+        "is_agent_available": true,
+        "messages": [],
+        "opened_at": "2025-10-01 16:39:40",
+        "picked_up_at": "2025-10-01 16:39:40",
+        "provider": "WHATSAPPB2CHAT",
+        "responded_at": null,
+        "status": "PICKED_UP",
+        "tags": [],
+        "viewer_url": "https://app.b2chat.io/viewer/ce8f824e-3d9d-4aae-a6c5-d70df137f3c7/b3a7e7a3-47a9-4204-bff2-14fc9b67c144"
+      }
+    ],
+    "exported": 5,
+    "message": "5 chats were exported",
+    "total": 2762
+  },
+  "analysis": {
+    "total_chats": 5,
+    "chats_with_messages": 0,
+    "chats_without_messages": 5,
+    "total_messages": 0,
+    "average_messages_per_chat": "0.00"
+  }
+}

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 
 interface Agent {
   id: string
@@ -11,39 +11,35 @@ interface Agent {
   totalChats: number
   totalMessages: number
   avgResponseTime: string
-  satisfaction: number
+  satisfaction: number | null
   createdAt: string
   updatedAt: string
 }
 
-export function useAgents() {
-  const [data, setData] = useState<Agent[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+async function fetchAgents(): Promise<Agent[]> {
+  const response = await fetch('/api/agents')
 
-  const fetchAgents = async () => {
-    try {
-      setLoading(true)
-      const response = await fetch('/api/agents')
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch agents')
-      }
-
-      const agents = await response.json()
-      setData(agents)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
-      setData([])
-    } finally {
-      setLoading(false)
-    }
+  if (!response.ok) {
+    throw new Error('Failed to fetch agents')
   }
 
-  useEffect(() => {
-    fetchAgents()
-  }, [])
+  return response.json()
+}
 
-  return { data, loading, error, refetch: fetchAgents }
+export function useAgents() {
+  const { data = [], isLoading: loading, error, refetch } = useQuery({
+    queryKey: ['agents'],
+    queryFn: fetchAgents,
+    staleTime: 30000, // 30 seconds - data is fresh
+    gcTime: 5 * 60 * 1000, // 5 minutes - cache time
+    refetchOnWindowFocus: true,
+    retry: 2
+  })
+
+  return {
+    data,
+    loading,
+    error: error ? (error as Error).message : null,
+    refetch
+  }
 }

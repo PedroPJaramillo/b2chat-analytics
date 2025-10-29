@@ -2,6 +2,14 @@
 
 import { useQuery } from '@tanstack/react-query'
 
+export interface RawTableStats {
+  total: number
+  pending: number
+  processing: number
+  completed: number
+  failed: number
+}
+
 export interface SyncStats {
   b2chat: {
     contacts: number
@@ -11,6 +19,12 @@ export interface SyncStats {
   synced: {
     contacts: number
     chats: number
+    contactsNeedingSync: number // Fix 006: Stub contacts needing full sync
+    total: number
+  }
+  raw: {
+    contacts: RawTableStats
+    chats: RawTableStats
     total: number
   }
   syncPercentage: {
@@ -34,7 +48,12 @@ const fetchSyncStats = async (): Promise<SyncStats> => {
       if (response.status === 401) {
         return {
           b2chat: { contacts: 0, chats: 0, total: 0 },
-          synced: { contacts: 0, chats: 0, total: 0 },
+          synced: { contacts: 0, chats: 0, contactsNeedingSync: 0, total: 0 },
+          raw: {
+            contacts: { total: 0, pending: 0, processing: 0, completed: 0, failed: 0 },
+            chats: { total: 0, pending: 0, processing: 0, completed: 0, failed: 0 },
+            total: 0
+          },
           syncPercentage: { contacts: 0, chats: 0, overall: 0 }
         }
       }
@@ -58,7 +77,12 @@ const fetchSyncStats = async (): Promise<SyncStats> => {
     if (error instanceof TypeError || error instanceof SyntaxError) {
       return {
         b2chat: { contacts: 0, chats: 0, total: 0 },
-        synced: { contacts: 0, chats: 0, total: 0 },
+        synced: { contacts: 0, chats: 0, contactsNeedingSync: 0, total: 0 },
+        raw: {
+          contacts: { total: 0, pending: 0, processing: 0, completed: 0, failed: 0 },
+          chats: { total: 0, pending: 0, processing: 0, completed: 0, failed: 0 },
+          total: 0
+        },
         syncPercentage: { contacts: 0, chats: 0, overall: 0 }
       }
     }

@@ -1,11 +1,57 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import type { OfficeHoursFilter, ChatDirectionFilter } from '@/types/filters'
+
+interface ResponseTimeMetrics {
+  avg: string
+  p50: string
+  p95: string
+  p99: string
+  min: string
+  max: string
+}
+
+interface ResolutionTimeMetrics {
+  avg: string
+  p50: string
+  p95: string
+}
+
+interface ChannelResponseTime {
+  name: string
+  avg: string
+  p50: string
+  p95: string
+  count: number
+}
+
+interface HourlyResponseTime {
+  hour: number
+  avg: string
+  count: number
+}
+
+interface AgentResponseTime {
+  name: string
+  avg: string
+  p50: string
+  p95: string
+  chatCount: number
+}
+
+interface DepartmentResponseTime {
+  name: string
+  avg: string
+  p50: string
+  p95: string
+  chatCount: number
+}
 
 interface AnalyticsData {
   totalConversations: number
   avgResponseTime: string
-  satisfactionRate: number
+  satisfactionRate: number | null
   resolutionRate: number
   weeklyData: { name: string; value: number }[]
   agentPerformanceData: { name: string; value: number }[]
@@ -16,71 +62,53 @@ interface AnalyticsData {
     satisfactionTrend: number
     resolutionTrend: number
   }
+  // New enhanced metrics
+  responseTimeMetrics: ResponseTimeMetrics
+  resolutionTimeMetrics: ResolutionTimeMetrics
+  responseTimeByChannel: ChannelResponseTime[]
+  hourlyResponseTimes: HourlyResponseTime[]
+  agentResponseTimes: AgentResponseTime[]
+  departmentResponseTimes: DepartmentResponseTime[]
+  slaCompliance: number
+  slaThreshold: string
 }
 
-export function useAnalyticsData() {
-  const [data, setData] = useState<AnalyticsData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+async function fetchAnalytics(
+  officeHoursFilter: OfficeHoursFilter,
+  directionFilter: ChatDirectionFilter
+): Promise<AnalyticsData> {
+  const params = new URLSearchParams()
+  if (officeHoursFilter !== 'all') {
+    params.append('officeHoursFilter', officeHoursFilter)
+  }
+  if (directionFilter !== 'all') {
+    params.append('direction', directionFilter)
+  }
+  const response = await fetch(`/api/analytics?${params.toString()}`)
 
-  useEffect(() => {
-    const fetchAnalytics = async () => {
-      try {
-        setLoading(true)
-        const response = await fetch('/api/analytics')
+  if (!response.ok) {
+    throw new Error('Failed to fetch analytics data')
+  }
 
-        if (!response.ok) {
-          throw new Error('Failed to fetch analytics data')
-        }
+  return response.json()
+}
 
-        const analyticsData = await response.json()
-        setData(analyticsData)
-        setError(null)
-      } catch (err) {
-        // If the API doesn't exist yet, use mock data
-        const mockData: AnalyticsData = {
-          totalConversations: 2547,
-          avgResponseTime: '2.3m',
-          satisfactionRate: 94.2,
-          resolutionRate: 87.3,
-          weeklyData: [
-            { name: "Monday", value: 245 },
-            { name: "Tuesday", value: 318 },
-            { name: "Wednesday", value: 287 },
-            { name: "Thursday", value: 392 },
-            { name: "Friday", value: 456 },
-            { name: "Saturday", value: 198 },
-            { name: "Sunday", value: 167 }
-          ],
-          agentPerformanceData: [
-            { name: "Sarah Johnson", value: 94 },
-            { name: "Mike Chen", value: 87 },
-            { name: "Lisa Wong", value: 91 },
-            { name: "David Smith", value: 83 }
-          ],
-          responseTimeData: [
-            { name: "< 1 minute", value: 45 },
-            { name: "1-3 minutes", value: 32 },
-            { name: "3-5 minutes", value: 18 },
-            { name: "5-10 minutes", value: 3 },
-            { name: "> 10 minutes", value: 2 }
-          ],
-          trends: {
-            conversationsTrend: 12.5,
-            responseTimeTrend: -8.2,
-            satisfactionTrend: 1.8,
-            resolutionTrend: 3.1
-          }
-        }
-        setData(mockData)
-        setError(null)
-      } finally {
-        setLoading(false)
-      }
-    }
+export function useAnalyticsData(
+  officeHoursFilter: OfficeHoursFilter = 'all',
+  directionFilter: ChatDirectionFilter = 'all'
+) {
+  const { data = null, isLoading: loading, error } = useQuery({
+    queryKey: ['analytics', officeHoursFilter, directionFilter],
+    queryFn: () => fetchAnalytics(officeHoursFilter, directionFilter),
+    staleTime: 60000, // 1 minute
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    refetchOnWindowFocus: true,
+    retry: 2
+  })
 
-    fetchAnalytics()
-  }, [])
-
-  return { data, loading, error }
+  return {
+    data,
+    loading,
+    error: error ? (error as Error).message : null
+  }
 }

@@ -1,7 +1,7 @@
 import { healthMonitor } from './health-monitor'
 import { auditLogger, audit, AuditEventType, AuditSeverity } from './audit'
 import { ActivityTracker, SessionTracker } from './activity-tracker'
-import { alerting } from '../app/api/monitoring/alerts/route'
+import { alerting, AlertSeverity } from './monitoring/alerts'
 import { logger } from './logger'
 import { invalidateRelatedCache } from './cache'
 
@@ -57,14 +57,18 @@ export class MonitoringIntegration {
     // Start periodic checks
     this.monitoringInterval = setInterval(() => {
       this.runPeriodicChecks().catch(error => {
-        logger.error('Periodic monitoring check failed', { error })
+        logger.error('Periodic monitoring check failed', {
+          error: error instanceof Error ? error : new Error(String(error)),
+        })
       })
     }, healthCheckInterval)
 
     // Start alert checks
     this.alertCheckInterval = setInterval(() => {
       this.checkForAlerts().catch(error => {
-        logger.error('Alert check failed', { error })
+        logger.error('Alert check failed', {
+          error: error instanceof Error ? error : new Error(String(error)),
+        })
       })
     }, alertCheckInterval)
 
@@ -137,7 +141,7 @@ export class MonitoringIntegration {
       // Check memory usage
       const metrics = healthMonitor.getLastMetrics()
       if (metrics && metrics.memoryUsage.percentage > this.thresholds.memoryUsage) {
-        alerting.highMemoryUsage(metrics.memoryUsage.percentage)
+        alerting.highMemoryUsage(metrics.memoryUsage.percentage, this.thresholds.memoryUsage)
       }
 
       // Check for suspicious user activity
@@ -163,15 +167,23 @@ export class MonitoringIntegration {
       const auditStats = await auditLogger.getAuditStats('1h')
 
       if (auditStats.securityEvents > 5) {
-        alerting.suspiciousActivity(
-          undefined,
+        alerting.custom(
+          'Suspicious Activity',
           `High number of security events: ${auditStats.securityEvents}`,
+          AlertSeverity.HIGH,
+          'security_monitor',
           { securityEvents: auditStats.securityEvents }
         )
       }
 
       if (auditStats.errorRate > this.thresholds.errorRate) {
-        alerting.highErrorRate('system', auditStats.errorRate)
+        alerting.custom(
+          'High Error Rate',
+          `System error rate is ${auditStats.errorRate}%`,
+          AlertSeverity.HIGH,
+          'system_monitor',
+          { errorRate: auditStats.errorRate }
+        )
       }
 
     } catch (error) {
@@ -190,10 +202,13 @@ export class MonitoringIntegration {
       const activityRate = session.activityCount / (session.duration / 60000) // per minute
 
       if (activityRate > this.thresholds.suspiciousActivityThreshold) {
-        alerting.suspiciousActivity(
-          session.userId,
-          'Unusually high activity rate',
+        alerting.custom(
+          'Suspicious Activity',
+          `User ${session.userId} showing unusually high activity rate`,
+          AlertSeverity.HIGH,
+          'activity_monitor',
           {
+            userId: session.userId,
             activityRate: Math.round(activityRate),
             sessionDuration: Math.round(session.duration / 1000),
             activityCount: session.activityCount,
@@ -227,10 +242,13 @@ export class MonitoringIntegration {
 
         // Optionally create an alert for very long sessions
         if (session.duration > this.thresholds.sessionDuration * 1.5) {
-          alerting.suspiciousActivity(
-            session.userId,
-            'Extremely long session duration',
+          alerting.custom(
+            'Long Session Alert',
+            `User ${session.userId} has extremely long session duration`,
+            AlertSeverity.MEDIUM,
+            'session_monitor',
             {
+              userId: session.userId,
               sessionDuration: Math.round(session.duration / 1000 / 60),
               threshold: Math.round(this.thresholds.sessionDuration / 1000 / 60),
             }
@@ -330,7 +348,7 @@ export class MonitoringIntegration {
   public triggerAlert = {
     // Database alerts
     databaseError: (error: Error) => {
-      alerting.databaseConnectionFailed(error.message)
+      alerting.databaseConnection(error.message)
       audit.systemEvent(
         AuditEventType.DATABASE_CONNECTION_FAILED,
         { error: error.message },
@@ -340,15 +358,23 @@ export class MonitoringIntegration {
 
     // API alerts
     apiError: (endpoint: string, error: Error, userId?: string) => {
-      alerting.highErrorRate(endpoint, 100) // 100% error rate for single failure
+      alerting.custom(
+        'API Error',
+        `High error rate on endpoint ${endpoint}`,
+        AlertSeverity.HIGH,
+        'api_monitor',
+        { endpoint }
+      )
       audit.apiError(endpoint, error, userId)
     },
 
     // Security alerts
     securityBreach: (details: Record<string, any>) => {
-      alerting.suspiciousActivity(
-        details.userId,
+      alerting.custom(
+        'Security Breach Alert',
         'Potential security breach detected',
+        AlertSeverity.CRITICAL,
+        'security_monitor',
         details
       )
       audit.securityEvent(AuditEventType.SUSPICIOUS_ACTIVITY, details)
@@ -356,14 +382,14 @@ export class MonitoringIntegration {
 
     // Sync alerts
     syncFailure: (entityType: string, error: string, userId: string) => {
-      alerting.syncFailed(entityType, error)
+      alerting.syncFailure(entityType, error)
       audit.syncEvent(userId, AuditEventType.SYNC_FAILED, { entityType, error }, false, error)
     },
 
     // External service alerts
     externalServiceDown: (service: string, error: string) => {
       if (service === 'b2chat') {
-        alerting.b2chatAPIDown(error)
+        alerting.systemDown('b2chat-api', { error })
       } else {
         alerting.systemDown(service, { error, service })
       }
@@ -388,10 +414,10 @@ export class MonitoringIntegration {
     )
   }
 
-  public getStatus(): {
+  public getStatus(this: MonitoringIntegration): {
     isRunning: boolean
     uptime: number
-    thresholds: typeof this.thresholds
+    thresholds: MonitoringIntegration['thresholds']
     healthStatus: any
     lastMetrics: any
     activeSessions: number

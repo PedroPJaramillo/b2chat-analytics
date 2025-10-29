@@ -10,7 +10,7 @@ export interface SyncConfig {
 
 const DEFAULT_CONFIG: SyncConfig = {
   interval: 15,
-  batchSize: 100,
+  batchSize: 1000,
   autoSync: true,
   retryAttempts: 3,
   retryDelay: 1000,

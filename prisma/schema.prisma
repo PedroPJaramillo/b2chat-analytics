@@ -5,6 +5,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  // directUrl = env("POSTGRES_URL_NON_POOLING")  // Commented out for local development
 }
 
 // User management (synced from Clerk)
@@ -22,6 +23,10 @@ model User {
   notifications         Notification[]
   exportLogs            ExportLog[]
   effectivenessAnalysis EffectivenessAnalysis[]
+  customerAnalyses      CustomerAnalysis[]
+  analysisExports       AnalysisExport[]
+  errorLogs             ErrorLog[]
+  auditLogs             AuditLog[]
 
   @@map("users")
 }
@@ -74,8 +79,9 @@ model Agent {
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
   // Relations
-  department Department? @relation(fields: [departmentId], references: [id])
-  chats      Chat[]
+  department   Department?   @relation(fields: [departmentId], references: [id])
+  chats        Chat[]
+  analysisKpis AnalysisKPI[]
 
   @@index([b2chatId])
   @@index([departmentId])
@@ -91,6 +97,7 @@ model Contact {
   b2chatId         String    @unique @map("b2chat_id")
   fullName         String    @map("full_name")
   mobile           String?
+  phoneNumber      String?   @map("phone_number") // Landline phone separate from mobile
   email            String?
   identification   String?
   address          String?
@@ -98,6 +105,17 @@ model Contact {
   country          String?
   company          String?
   customAttributes Json?     @map("custom_attributes")
+
+  // Feature 002: New fields for complete B2Chat data capture
+  tags             Json?     @map("tags") // B2Chat tags with assignment timestamps: [{"name": "VIP", "assigned_at": 1706644084}]
+  merchantId       String?   @map("merchant_id") // B2Chat merchant identifier for multi-tenant support
+  b2chatCreatedAt  DateTime? @map("b2chat_created_at") // Original creation timestamp from B2Chat (not our sync time)
+  b2chatUpdatedAt  DateTime? @map("b2chat_updated_at") // Original last update timestamp from B2Chat
+
+  // Fix 006: Contact deduplication tracking
+  syncSource       ContactSyncSource @default(contacts_api) @map("sync_source") // Tracks data source (API, chat embedding, or upgraded)
+  needsFullSync    Boolean          @default(false) @map("needs_full_sync") // True if stub needs upgrade to full contact
+
   isDeleted        Boolean   @default(false) @map("is_deleted")
   deletedAt        DateTime? @map("deleted_at")
   deletionReason   String?   @map("deletion_reason")
@@ -111,7 +129,11 @@ model Contact {
   @@index([b2chatId])
   @@index([email])
   @@index([mobile])
+  @@index([phoneNumber])
+  @@index([merchantId]) // Feature 002: Index for merchant filtering
   @@index([isDeleted])
+  @@index([syncSource]) // Fix 006: Index for filtering by sync source
+  @@index([needsFullSync]) // Fix 006: Index for finding stubs that need upgrade
   @@map("contacts")
 }
 
@@ -125,25 +147,67 @@ model Chat {
   provider         ChatProvider
   status           ChatStatus
   isAgentAvailable Boolean?     @map("is_agent_available")
+  alias            String? // NEW: Account alias from B2Chat
+  tags             String[]     @default([]) // NEW: Chat tags for categorization
+  priority         ChatPriority @default(normal) // NEW: Priority level for triage
+  topic            String? // NEW: Chat topic/subject for categorization
+  unreadCount      Int          @default(0) @map("unread_count") // NEW: Count of unread customer messages
+  resolutionNote   String?      @map("resolution_note") // NEW: Notes when chat is resolved
+  direction        ChatDirection @default(incoming) @map("direction") // NEW: Chat direction (incoming/outgoing)
+  originalDirection ChatDirection? @map("original_direction") // NEW: Original direction before conversion
   createdAt        DateTime     @map("created_at")
   openedAt         DateTime?    @map("opened_at")
   pickedUpAt       DateTime?    @map("picked_up_at")
   responseAt       DateTime?    @map("response_at")
   closedAt         DateTime?    @map("closed_at")
   duration         Int? // seconds
-  isDeleted        Boolean      @default(false) @map("is_deleted")
-  deletedAt        DateTime?    @map("deleted_at")
-  deletionReason   String?      @map("deletion_reason")
-  lastModifiedAt   DateTime?    @map("last_modified_at")
-  lastSyncAt       DateTime?    @map("last_sync_at")
-  syncVersion      Int          @default(1) @map("sync_version")
+
+  // Survey-related fields (Feature 001: Full Status Support)
+  pollStartedAt    DateTime? @map("poll_started_at")
+  pollCompletedAt  DateTime? @map("poll_completed_at")
+  pollAbandonedAt  DateTime? @map("poll_abandoned_at")
+  pollResponse     Json?     @map("poll_response")
+
+  isDeleted        Boolean   @default(false) @map("is_deleted")
+  deletedAt        DateTime? @map("deleted_at")
+  deletionReason   String?   @map("deletion_reason")
+  lastModifiedAt   DateTime? @map("last_modified_at")
+  lastSyncAt       DateTime? @map("last_sync_at")
+  syncVersion      Int       @default(1) @map("sync_version")
+
+  // SLA Metric Values (in seconds) - Wall Clock Time
+  timeToPickup         Int?     @map("time_to_pickup") // Time from opened_at to picked_up_at (seconds)
+  firstResponseTime    Int?     @map("first_response_time") // Time from opened_at to first human agent message (seconds)
+  avgResponseTime      Float?   @map("avg_response_time") // Average agent response time throughout conversation (seconds)
+  resolutionTime       Int?     @map("resolution_time") // Time from opened_at to closed_at (seconds)
+
+  // SLA Compliance Flags - Wall Clock Time
+  pickupSLA            Boolean? @map("pickup_sla") // True if timeToPickup <= 120 seconds
+  firstResponseSLA     Boolean? @map("first_response_sla") // True if firstResponseTime <= 300 seconds
+  avgResponseSLA       Boolean? @map("avg_response_sla") // True if avgResponseTime <= 300 seconds
+  resolutionSLA        Boolean? @map("resolution_sla") // True if resolutionTime <= 7200 seconds
+  overallSLA           Boolean? @map("overall_sla") // True if ALL applicable SLAs are met
+
+  // SLA Metric Values (in seconds) - Business Hours Only
+  timeToPickupBH       Int?     @map("time_to_pickup_bh") // Pickup time in business hours only
+  firstResponseTimeBH  Int?     @map("first_response_time_bh") // First response time in business hours only
+  avgResponseTimeBH    Float?   @map("avg_response_time_bh") // Avg response time in business hours only
+  resolutionTimeBH     Int?     @map("resolution_time_bh") // Resolution time in business hours only
+
+  // SLA Compliance Flags - Business Hours
+  pickupSLABH          Boolean? @map("pickup_sla_bh") // Pickup SLA compliance (business hours)
+  firstResponseSLABH   Boolean? @map("first_response_sla_bh") // First response SLA compliance (business hours)
+  avgResponseSLABH     Boolean? @map("avg_response_sla_bh") // Avg response SLA compliance (business hours)
+  resolutionSLABH      Boolean? @map("resolution_sla_bh") // Resolution SLA compliance (business hours)
+  overallSLABH         Boolean? @map("overall_sla_bh") // Overall SLA compliance (business hours)
 
   // Relations
-  agent                 Agent?                  @relation(fields: [agentId], references: [id])
-  contact               Contact?                @relation(fields: [contactId], references: [id])
-  department            Department?             @relation(fields: [departmentId], references: [id])
-  messages              Message[]
-  effectivenessAnalysis EffectivenessAnalysis[]
+  agent                   Agent?                   @relation(fields: [agentId], references: [id])
+  contact                 Contact?                 @relation(fields: [contactId], references: [id])
+  department              Department?              @relation(fields: [departmentId], references: [id])
+  messages                Message[]
+  effectivenessAnalysis   EffectivenessAnalysis[]
+  customerCategorizations CustomerCategorization[]
 
   @@index([b2chatId])
   @@index([agentId, createdAt])
@@ -152,7 +216,47 @@ model Chat {
   @@index([provider, createdAt])
   @@index([isDeleted])
   @@index([lastModifiedAt])
+  @@index([alias]) // NEW: Index for alias filtering
+  @@index([tags]) // NEW: Index for tags filtering
+  @@index([priority, status]) // NEW: Index for priority filtering and sorting
+  @@index([topic]) // NEW: Index for topic search
+  @@index([unreadCount]) // NEW: Index for unread filtering
+  @@index([status, priority, lastModifiedAt]) // NEW: Composite index for common queries
+  @@index([agentId, status, createdAt]) // PERF: Composite index for agent filtered queries
+  @@index([direction]) // NEW: Index for direction filtering
+  @@index([direction, status, createdAt]) // NEW: Composite index for direction-based queries
+  @@index([overallSLA]) // SLA: Index for overall SLA filtering
+  @@index([overallSLABH]) // SLA: Index for business hours overall SLA filtering
+  @@index([pickupSLA]) // SLA: Index for pickup SLA filtering
+  @@index([firstResponseSLA]) // SLA: Index for first response SLA filtering
+  @@index([avgResponseSLA]) // SLA: Index for avg response SLA filtering
+  @@index([resolutionSLA]) // SLA: Index for resolution SLA filtering
+  @@index([openedAt, overallSLA]) // SLA: Composite index for date + SLA queries
+  @@index([agentId, overallSLA]) // SLA: Composite index for agent + SLA queries
+  @@index([pollStartedAt]) // Feature 001: Index for survey filtering
+  @@index([pollCompletedAt]) // Feature 001: Index for completed surveys
+  @@index([pollAbandonedAt]) // Feature 001: Index for abandoned surveys
+  @@index([status, pollStartedAt]) // Feature 001: Composite index for survey queries
   @@map("chats")
+}
+
+enum ChatDirection {
+  incoming          // Customer-initiated (traditional support)
+  outgoing          // Agent-initiated (1-to-1 outreach)
+  outgoing_broadcast // System/broadcast-initiated (mass campaigns)
+}
+
+enum ContactSyncSource {
+  contacts_api    // Created from dedicated contacts API endpoint
+  chat_embedded   // Created from contact embedded in chat
+  upgraded        // Started as stub, upgraded with API data
+}
+
+enum ChatPriority {
+  urgent
+  high
+  normal
+  low
 }
 
 enum ChatProvider {
@@ -164,9 +268,20 @@ enum ChatProvider {
 }
 
 enum ChatStatus {
+  // Legacy values (keep for backward compatibility)
   open
   closed
   pending
+
+  // Full B2Chat status values (8 statuses)
+  BOT_CHATTING        // Chat being handled by bot (before human agent)
+  OPENED              // Available for agent pickup (not yet assigned)
+  PICKED_UP           // Agent has accepted and is handling the chat
+  RESPONDED_BY_AGENT  // Agent has responded to contact
+  CLOSED              // Chat has been closed by agent or system
+  COMPLETING_POLL     // Awaiting customer satisfaction survey response
+  COMPLETED_POLL      // Customer completed satisfaction survey
+  ABANDONED_POLL      // Customer did not complete survey within timeout
 }
 
 // Individual messages within chats
@@ -201,6 +316,142 @@ enum MessageType {
   text
   image
   file
+}
+
+enum AnalysisStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  PARTIAL
+}
+
+enum CustomerIntent {
+  PROJECT_INFO
+  PAYMENT
+  LEGAL
+  POST_PURCHASE
+  OTHER
+}
+
+enum JourneyStage {
+  PROSPECT
+  ACTIVE_BUYER
+  POST_PURCHASE
+}
+
+enum Sentiment {
+  POSITIVE
+  NEUTRAL
+  FRICTION
+}
+
+enum MetricType {
+  RESPONSE_TIME
+  VOLUME
+  PEAK_TIME
+  CUSTOMER_INTENT
+  JOURNEY_STAGE
+  SENTIMENT
+  AGENT_QUALITY
+  CHANNEL_USAGE
+}
+
+enum ExportFormat {
+  PDF
+  CSV
+}
+
+// Customer analysis domain tables
+model CustomerAnalysis {
+  id                    String         @id @default(cuid())
+  status                AnalysisStatus @default(PENDING)
+  triggeredBy           String         @map("triggered_by")
+  filters               Json
+  totalChatsAnalyzed    Int            @default(0) @map("total_chats_analyzed")
+  totalMessagesAnalyzed Int            @default(0) @map("total_messages_analyzed")
+  aiAnalysisCount       Int            @default(0) @map("ai_analysis_count")
+  startedAt             DateTime?      @map("started_at")
+  completedAt           DateTime?      @map("completed_at")
+  errorMessage          String?        @map("error_message")
+  processingTimeMs      Int?           @map("processing_time_ms")
+  createdAt             DateTime       @default(now()) @map("created_at")
+  updatedAt             DateTime       @updatedAt @map("updated_at")
+
+  triggeredByUser User                     @relation(fields: [triggeredBy], references: [id])
+  categorizations CustomerCategorization[]
+  kpis            AnalysisKPI[]
+  exports         AnalysisExport[]
+
+  @@index([triggeredBy, createdAt])
+  @@index([status, createdAt])
+  @@map("customer_analyses")
+}
+
+model CustomerCategorization {
+  id                String          @id @default(cuid())
+  analysisId        String          @map("analysis_id")
+  chatId            String          @map("chat_id")
+  customerIntent    CustomerIntent? @map("customer_intent")
+  journeyStage      JourneyStage?   @map("journey_stage")
+  sentiment         Sentiment?      @map("sentiment")
+  agentQualityScore Int?            @map("agent_quality_score")
+  reasoningNotes    String?         @map("reasoning_notes")
+  confidenceScore   Float?          @map("confidence_score")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  analysis CustomerAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  chat     Chat             @relation(fields: [chatId], references: [id], onDelete: Cascade)
+
+  @@unique([analysisId, chatId])
+  @@index([analysisId, customerIntent])
+  @@index([analysisId, journeyStage])
+  @@index([analysisId, sentiment])
+  @@map("customer_categorizations")
+}
+
+model AnalysisKPI {
+  id           String     @id @default(cuid())
+  analysisId   String     @map("analysis_id")
+  metricType   MetricType @map("metric_type")
+  metricName   String     @map("metric_name")
+  numericValue Float?     @map("numeric_value")
+  stringValue  String?    @map("string_value")
+  jsonValue    Json?      @map("json_value")
+  agentId      String?    @map("agent_id")
+  category     String     @map("category")
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  analysis CustomerAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  agent    Agent?           @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  @@index([analysisId, metricType])
+  @@index([category])
+  @@index([agentId])
+  @@map("analysis_kpis")
+}
+
+model AnalysisExport {
+  id            String       @id @default(cuid())
+  analysisId    String       @map("analysis_id")
+  format        ExportFormat @map("format")
+  fileName      String       @map("file_name")
+  blobUrl       String?      @map("blob_url")
+  blobKey       String?      @map("blob_key")
+  generatedBy   String       @map("generated_by")
+  fileSizeBytes Int          @default(0) @map("file_size_bytes")
+  expiresAt     DateTime?    @map("expires_at")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+
+  analysis        CustomerAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  generatedByUser User             @relation(fields: [generatedBy], references: [id])
+
+  @@index([analysisId])
+  @@index([expiresAt])
+  @@map("analysis_exports")
 }
 
 // Sync management tables
@@ -341,4 +592,213 @@ model EffectivenessAnalysis {
   @@index([userId])
   @@index([effectivenessScore])
   @@map("effectiveness_analysis")
+}
+
+// ============================================================================
+// TWO-STAGE SYNC ARCHITECTURE - Raw staging tables and tracking logs
+// ============================================================================
+
+// Raw contacts from B2Chat API (no transformation)
+model RawContact {
+  id                String    @id @default(cuid())
+  syncId            String    @map("sync_id")
+  b2chatContactId   String    @map("b2chat_contact_id")
+  rawData           Json      @map("raw_data")
+  apiPage           Int       @map("api_page")
+  apiOffset         Int       @map("api_offset")
+  fetchedAt         DateTime  @map("fetched_at")
+  processedAt       DateTime? @map("processed_at")
+  processingStatus  String    @default("pending") @map("processing_status")
+  processingError   String?   @map("processing_error")
+  processingAttempt Int       @default(0) @map("processing_attempt")
+
+  @@index([syncId])
+  @@index([b2chatContactId])
+  @@index([processingStatus])
+  @@index([fetchedAt])
+  @@index([syncId, processingStatus])
+  @@map("raw_contacts")
+}
+
+// Raw chats from B2Chat API (no transformation)
+model RawChat {
+  id                String    @id @default(cuid())
+  syncId            String    @map("sync_id")
+  b2chatChatId      String    @map("b2chat_chat_id")
+  rawData           Json      @map("raw_data")
+  apiPage           Int       @map("api_page")
+  apiOffset         Int       @map("api_offset")
+  fetchedAt         DateTime  @map("fetched_at")
+  processedAt       DateTime? @map("processed_at")
+  processingStatus  String    @default("pending") @map("processing_status")
+  processingError   String?   @map("processing_error")
+  processingAttempt Int       @default(0) @map("processing_attempt")
+
+  @@index([syncId])
+  @@index([b2chatChatId])
+  @@index([processingStatus])
+  @@index([fetchedAt])
+  @@index([syncId, processingStatus])
+  @@map("raw_chats")
+}
+
+// Track extract operations separately from transform
+model ExtractLog {
+  id                  String    @id @default(cuid())
+  syncId              String    @unique @map("sync_id")
+  entityType          String    @map("entity_type")
+  operation           String
+  startedAt           DateTime  @map("started_at")
+  completedAt         DateTime? @map("completed_at")
+  status              String
+  apiCallCount        Int       @default(0) @map("api_call_count")
+  recordsFetched      Int       @default(0) @map("records_fetched")
+  totalPages          Int?      @map("total_pages")
+  currentPage         Int?      @map("current_page")
+  errorMessage        String?   @map("error_message")
+  dateRangeFrom       DateTime? @map("date_range_from")
+  dateRangeTo         DateTime? @map("date_range_to")
+  timeRangePreset     String?   @map("time_range_preset") // '1d', '7d', '30d', '90d', 'full'
+  userId              String?   @map("user_id")
+  estimatedTotal      Int?      @map("estimated_total")
+  batchSize           Int       @default(100) @map("batch_size")
+  contactFilterMobile String?   @map("contact_filter_mobile") // Mobile number filter if single contact sync
+  metadata            Json?     // Store additional metadata like contactFilter
+
+  @@index([entityType])
+  @@index([status])
+  @@index([startedAt])
+  @@index([syncId])
+  @@map("extract_logs")
+}
+
+// Track transform operations
+model TransformLog {
+  id                 String    @id @default(cuid())
+  syncId             String    @unique @map("sync_id")
+  extractSyncId      String?   @map("extract_sync_id")
+  entityType         String    @map("entity_type")
+  startedAt          DateTime  @map("started_at")
+  completedAt        DateTime? @map("completed_at")
+  status             String
+  recordsProcessed   Int       @default(0) @map("records_processed")
+  recordsCreated     Int       @default(0) @map("records_created")
+  recordsUpdated     Int       @default(0) @map("records_updated")
+  recordsSkipped     Int       @default(0) @map("records_skipped")
+  recordsFailed      Int       @default(0) @map("records_failed")
+  validationWarnings Int       @default(0) @map("validation_warnings")
+  errorMessage       String?   @map("error_message")
+  userId             String?   @map("user_id")
+  changesSummary     Json?     @map("changes_summary")
+
+  @@index([extractSyncId])
+  @@index([entityType])
+  @@index([status])
+  @@index([startedAt])
+  @@map("transform_logs")
+}
+
+// Track chat status changes for analytics
+model ChatStatusHistory {
+  id             String     @id @default(cuid())
+  chatId         String     @map("chat_id")
+  previousStatus ChatStatus @map("previous_status")
+  newStatus      ChatStatus @map("new_status")
+  changedAt      DateTime   @map("changed_at")
+  syncId         String?    @map("sync_id")
+  transformId    String?    @map("transform_id")
+
+  @@index([chatId, changedAt])
+  @@index([syncId])
+  @@map("chat_status_history")
+}
+
+// Store validation results for each transform
+model SyncValidationResult {
+  id              String   @id @default(cuid())
+  syncId          String   @map("sync_id")
+  transformId     String?  @map("transform_id")
+  entityType      String   @map("entity_type")
+  validationName  String   @map("validation_name")
+  severity        String
+  affectedRecords Int      @map("affected_records")
+  details         Json
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@index([syncId])
+  @@index([transformId])
+  @@index([severity])
+  @@index([validationName])
+  @@map("sync_validation_results")
+}
+
+// Logging and audit tables
+model ApiResponseLog {
+  id            String   @id
+  syncId        String   @map("sync_id")
+  endpoint      String
+  requestParams Json?    @map("request_params")
+  rawResponse   Json?    @map("raw_response")
+  responseSize  Int      @map("response_size")
+  recordCount   Int      @map("record_count")
+  apiTimestamp  DateTime @map("api_timestamp")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([syncId])
+  @@index([apiTimestamp])
+  @@map("api_response_logs")
+}
+
+model ErrorLog {
+  id            String   @id @default(cuid())
+  level         String
+  message       String
+  errorCode     String?  @map("error_code")
+  stackTrace    String?  @map("stack_trace")
+  userId        String?  @map("user_id")
+  requestId     String?  @map("request_id")
+  correlationId String?  @map("correlation_id")
+  source        String
+  metadata      Json?
+  timestamp     DateTime
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([level])
+  @@index([source])
+  @@index([timestamp])
+  @@index([createdAt])
+  @@map("error_logs")
+}
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  timestamp     DateTime
+  userId        String?  @map("user_id")
+  userEmail     String?  @map("user_email")
+  sessionId     String?  @map("session_id")
+  ipAddress     String?  @map("ip_address")
+  userAgent     String?  @map("user_agent")
+  eventType     String   @map("event_type")
+  severity      String
+  resource      String?
+  action        String?
+  details       Json?
+  metadata      Json?
+  success       Boolean  @default(true)
+  errorMessage  String?  @map("error_message")
+  requestId     String?  @map("request_id")
+  correlationId String?  @map("correlation_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([timestamp])
+  @@index([userId])
+  @@index([eventType])
+  @@index([severity])
+  @@index([resource])
+  @@index([correlationId])
+  @@map("audit_logs")
 }

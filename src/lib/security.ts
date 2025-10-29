@@ -170,7 +170,7 @@ export function sanitizeSql(input: string): string {
   // Note: We're using Prisma which handles SQL injection prevention
   // This is just an additional layer for direct queries
   return input
-    .replace(/[';--]/g, '')
+    .replace(/[';-]/g, '')
     .trim()
 }
 

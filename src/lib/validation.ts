@@ -123,12 +123,31 @@ export const AgentsQuerySchema = z.object({
   search: z.string().optional().transform(val => val ? sanitizeSearchQuery(val) : undefined),
 }).merge(PaginationSchema)
 
+export const SyncTimeRangePresetSchema = z.enum(['1d', '7d', '30d', '90d', 'custom', 'full'])
+
+// Date range schema for sync operations (keeps strings)
+export const DateRangeStringSchema = z.object({
+  startDate: z
+    .string()
+    .optional()
+    .refine((val) => !val || !isNaN(Date.parse(val)), {
+      message: 'Invalid start date format',
+    }),
+  endDate: z
+    .string()
+    .optional()
+    .refine((val) => !val || !isNaN(Date.parse(val)), {
+      message: 'Invalid end date format',
+    })
+})
+
 export const SyncRequestSchema = z.object({
   entityType: SyncEntitySchema,
   options: z.object({
     fullSync: z.boolean().optional(),
     batchSize: z.number().min(10).max(1000).optional(),
-    dateRange: DateRangeSchema.optional(),
+    dateRange: DateRangeStringSchema.optional(),
+    timeRangePreset: SyncTimeRangePresetSchema.optional(),
   }).optional()
 })
 

@@ -1,5 +1,6 @@
 "use client"
 
+import { useMemo } from "react"
 import { Progress } from "@/components/ui/progress"
 
 interface SimpleBarChartProps {
@@ -12,7 +13,10 @@ interface SimpleBarChartProps {
 }
 
 export function SimpleBarChart({ data, className }: SimpleBarChartProps) {
-  const maxValue = Math.max(...data.map(item => item.maxValue || item.value))
+  const maxValue = useMemo(
+    () => Math.max(...data.map(item => item.maxValue || item.value)),
+    [data]
+  )
 
   return (
     <div className={`space-y-4 ${className}`}>

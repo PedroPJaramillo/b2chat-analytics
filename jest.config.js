@@ -54,7 +54,7 @@ const customJestConfig = {
   // Ignore patterns
   testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/.next/'],
   transformIgnorePatterns: [
-    '/node_modules/',
+    '/node_modules/(?!(@react-pdf|@vercel/blob)/)',
     '^.+\\.module\\.(css|sass|scss)$',
   ],
 

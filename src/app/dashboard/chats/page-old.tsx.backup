@@ -1,0 +1,541 @@
+"use client"
+
+import { useState, useEffect } from 'react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { MoreHorizontal, Search, Filter, MessageSquare, Clock, User, Eye, Tag, History } from "lucide-react"
+import { format } from 'date-fns'
+import { MessageList } from '@/components/messages/message-list'
+import { ContactBadge } from '@/components/chats/contact-badge'
+import { ContactHistoryPanel } from '@/components/chats/contact-history-panel'
+
+interface PreviousChat {
+  id: string
+  b2chatId: string
+  topic: string
+  status: string
+  createdAt: string
+  closedAt: string | null
+  messageCount: number
+}
+
+interface Chat {
+  id: string
+  b2chatId: string
+  customer: string
+  contactId: string | null
+  agent: string | null
+  status: string
+  alias: string | null
+  tags: string[]
+  startTime: string
+  lastMessage: string
+  messages: number
+  priority: string
+  topic: string
+  // Contact context fields
+  contactChatCount?: number
+  contactPreviousChats?: PreviousChat[]
+  isRepeatCustomer?: boolean
+}
+
+const getStatusColor = (status: string) => {
+  switch (status?.toLowerCase()) {
+    case 'open':
+    case 'active':
+      return 'bg-green-100 text-green-800'
+    case 'closed':
+    case 'resolved':
+      return 'bg-gray-100 text-gray-800'
+    case 'pending':
+      return 'bg-yellow-100 text-yellow-800'
+    default:
+      return 'bg-gray-100 text-gray-800'
+  }
+}
+
+const getPriorityColor = (priority: string) => {
+  switch (priority?.toLowerCase()) {
+    case 'urgent':
+    case 'high':
+      return 'bg-red-100 text-red-800'
+    case 'medium':
+      return 'bg-yellow-100 text-yellow-800'
+    case 'low':
+      return 'bg-blue-100 text-blue-800'
+    default:
+      return 'bg-gray-100 text-gray-800'
+  }
+}
+
+const formatTime = (timestamp: string) => {
+  try {
+    const date = new Date(timestamp)
+    const now = new Date()
+    const diff = now.getTime() - date.getTime()
+
+    // Less than 1 minute
+    if (diff < 60000) return 'Just now'
+
+    // Less than 1 hour
+    if (diff < 3600000) {
+      const minutes = Math.floor(diff / 60000)
+      return `${minutes} minute${minutes > 1 ? 's' : ''} ago`
+    }
+
+    // Less than 24 hours
+    if (diff < 86400000) {
+      const hours = Math.floor(diff / 3600000)
+      return `${hours} hour${hours > 1 ? 's' : ''} ago`
+    }
+
+    // More than 24 hours
+    return format(date, 'MMM d, yyyy HH:mm')
+  } catch {
+    return timestamp
+  }
+}
+
+export default function ChatsPage() {
+  const [chats, setChats] = useState<Chat[]>([])
+  const [loading, setLoading] = useState(true)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [statusFilter, setStatusFilter] = useState("all")
+  const [selectedChat, setSelectedChat] = useState<Chat | null>(null)
+  const [messageModalOpen, setMessageModalOpen] = useState(false)
+  const [historyContactId, setHistoryContactId] = useState<string | null>(null)
+  const [historyContactName, setHistoryContactName] = useState("")
+  const [historyPanelOpen, setHistoryPanelOpen] = useState(false)
+
+  useEffect(() => {
+    const fetchChats = async () => {
+      try {
+        setLoading(true)
+        const params = new URLSearchParams()
+        if (statusFilter !== 'all') params.append('status', statusFilter)
+        params.append('includeContactContext', 'true')
+
+        const response = await fetch(`/api/chats${params.toString() ? `?${params}` : ''}`)
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch chats')
+        }
+
+        const data = await response.json()
+        setChats(data.data || [])
+      } catch (error) {
+        console.error('Error fetching chats:', error)
+        // Use fallback mock data if API fails
+        const mockChats = [
+          {
+            id: '1',
+            b2chatId: 'chat_001',
+            customer: 'Maria Rodriguez',
+            contactId: 'contact_001',
+            agent: 'Sarah Johnson',
+            status: 'active',
+            alias: 'VIP Customer',
+            tags: ['billing', 'urgent', 'vip'],
+            priority: 'high',
+            topic: 'Account Access',
+            messages: 15,
+            startTime: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days ago
+            lastMessage: new Date(Date.now() - 5 * 60 * 1000).toISOString(), // 5 minutes ago
+            contactChatCount: 3,
+            isRepeatCustomer: true,
+            contactPreviousChats: [
+              {
+                id: '1',
+                b2chatId: 'chat_001',
+                topic: 'Account Access',
+                status: 'active',
+                createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+                closedAt: null,
+                messageCount: 15
+              },
+              {
+                id: 'chat_old_1',
+                b2chatId: 'chat_045',
+                topic: 'Technical Support',
+                status: 'closed',
+                createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), // 1 month ago
+                closedAt: new Date(Date.now() - 29 * 24 * 60 * 60 * 1000).toISOString(),
+                messageCount: 8
+              },
+              {
+                id: 'chat_old_2',
+                b2chatId: 'chat_001',
+                topic: 'Billing Issue',
+                status: 'closed',
+                createdAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(), // 2 months ago
+                closedAt: new Date(Date.now() - 59 * 24 * 60 * 60 * 1000).toISOString(),
+                messageCount: 12
+              }
+            ]
+          },
+          {
+            id: '2',
+            b2chatId: 'chat_002',
+            customer: 'Carlos Mendez',
+            contactId: 'contact_002',
+            agent: 'Mike Chen',
+            status: 'pending',
+            alias: null,
+            tags: ['technical', 'support'],
+            priority: 'medium',
+            topic: 'Technical Support',
+            messages: 8,
+            startTime: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(), // 1 hour ago
+            lastMessage: new Date(Date.now() - 15 * 60 * 1000).toISOString(), // 15 minutes ago
+            contactChatCount: 1,
+            isRepeatCustomer: false
+          },
+          {
+            id: '3',
+            b2chatId: 'chat_003',
+            customer: 'Ana Silva',
+            contactId: 'contact_003',
+            agent: 'Lisa Wong',
+            status: 'resolved',
+            alias: 'Returning Customer',
+            tags: ['general', 'resolved'],
+            priority: 'low',
+            topic: 'General Inquiry',
+            messages: 5,
+            startTime: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(), // 4 hours ago
+            lastMessage: new Date(Date.now() - 30 * 60 * 1000).toISOString(), // 30 minutes ago
+            contactChatCount: 2,
+            isRepeatCustomer: true,
+            contactPreviousChats: [
+              {
+                id: '3',
+                b2chatId: 'chat_003',
+                topic: 'General Inquiry',
+                status: 'resolved',
+                createdAt: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+                closedAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+                messageCount: 5
+              },
+              {
+                id: 'chat_old_3',
+                b2chatId: 'chat_067',
+                topic: 'Product Information',
+                status: 'closed',
+                createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+                closedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
+                messageCount: 7
+              }
+            ]
+          },
+          {
+            id: '4',
+            b2chatId: 'chat_004',
+            customer: 'Diego Morales',
+            contactId: 'contact_004',
+            agent: 'David Smith',
+            status: 'active',
+            alias: 'Enterprise Client',
+            tags: ['account', 'access', 'urgent'],
+            priority: 'urgent',
+            topic: 'Account Access',
+            messages: 15,
+            startTime: new Date(Date.now() - 30 * 60 * 1000).toISOString(), // 30 minutes ago
+            lastMessage: new Date(Date.now() - 2 * 60 * 1000).toISOString(), // 2 minutes ago
+            contactChatCount: 1,
+            isRepeatCustomer: false
+          },
+          {
+            id: '5',
+            b2chatId: 'chat_005',
+            customer: 'Lucia Fernandez',
+            contactId: 'contact_005',
+            agent: 'Emma Rodriguez',
+            status: 'pending',
+            alias: null,
+            tags: ['product', 'information'],
+            priority: 'medium',
+            topic: 'Product Information',
+            messages: 3,
+            startTime: new Date(Date.now() - 45 * 60 * 1000).toISOString(), // 45 minutes ago
+            lastMessage: new Date(Date.now() - 10 * 60 * 1000).toISOString(), // 10 minutes ago
+            contactChatCount: 1,
+            isRepeatCustomer: false
+          }
+        ]
+        setChats(mockChats)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchChats()
+  }, [statusFilter])
+
+  const handleOpenHistory = (contactId: string, contactName: string) => {
+    setHistoryContactId(contactId)
+    setHistoryContactName(contactName)
+    setHistoryPanelOpen(true)
+  }
+
+  const filteredChats = Array.isArray(chats) ? chats.filter(chat =>
+    chat.customer.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    chat.agent?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    chat.topic?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    chat.alias?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    chat.tags?.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
+  ) : []
+
+  return (
+    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+      <div className="flex items-center justify-between space-y-2">
+        <h2 className="text-3xl font-bold tracking-tight">Chats</h2>
+        <div className="flex items-center space-x-2">
+          <Badge variant="outline">
+            <MessageSquare className="mr-1 h-3 w-3" />
+            {filteredChats.length} Active
+          </Badge>
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>All Conversations</CardTitle>
+          <CardDescription>
+            Monitor and manage customer chat sessions
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {/* Filters */}
+          <div className="flex items-center space-x-2 mb-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by customer, agent, alias, tags, or topic..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8"
+              />
+            </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="open">Open</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="closed">Closed</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="icon">
+              <Filter className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Table */}
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Customer</TableHead>
+                <TableHead>Agent</TableHead>
+                <TableHead>Alias</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Tags</TableHead>
+                <TableHead>Priority</TableHead>
+                <TableHead>Topic</TableHead>
+                <TableHead>Messages</TableHead>
+                <TableHead>Started</TableHead>
+                <TableHead>Last Activity</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <TableRow key={i}>
+                    {Array.from({ length: 11 }).map((_, j) => (
+                      <TableCell key={j}>
+                        <Skeleton className="h-4 w-[100px]" />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))
+              ) : filteredChats.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={11} className="text-center text-muted-foreground">
+                    No chats found
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredChats.map((chat) => (
+                  <TableRow key={chat.id}>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center">
+                        <button
+                          onClick={() => {
+                            if (chat.contactId) {
+                              handleOpenHistory(chat.contactId, chat.customer)
+                            }
+                          }}
+                          className={`hover:text-primary hover:underline ${
+                            chat.contactId ? 'cursor-pointer' : 'cursor-default'
+                          }`}
+                          disabled={!chat.contactId}
+                        >
+                          {chat.customer}
+                        </button>
+                        {chat.contactChatCount && chat.contactChatCount > 0 && (
+                          <ContactBadge
+                            contactChatCount={chat.contactChatCount}
+                            contactPreviousChats={chat.contactPreviousChats}
+                            currentChatId={chat.id}
+                            onViewHistory={() => {
+                              if (chat.contactId) {
+                                handleOpenHistory(chat.contactId, chat.customer)
+                              }
+                            }}
+                          />
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>{chat.agent || 'Unassigned'}</TableCell>
+                    <TableCell>
+                      {chat.alias ? (
+                        <div className="flex items-center">
+                          <User className="mr-1 h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm">{chat.alias}</span>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={getStatusColor(chat.status)}>
+                        {chat.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      {chat.tags && chat.tags.length > 0 ? (
+                        <div className="flex items-center space-x-1">
+                          <Tag className="h-4 w-4 text-muted-foreground" />
+                          <div className="flex space-x-1">
+                            {chat.tags.slice(0, 2).map((tag, index) => (
+                              <Badge key={index} variant="secondary" className="text-xs">
+                                {tag}
+                              </Badge>
+                            ))}
+                            {chat.tags.length > 2 && (
+                              <Badge variant="secondary" className="text-xs">
+                                +{chat.tags.length - 2}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={getPriorityColor(chat.priority)}>
+                        {chat.priority}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{chat.topic}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center">
+                        <MessageSquare className="mr-1 h-4 w-4 text-muted-foreground" />
+                        {chat.messages}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center">
+                        <Clock className="mr-1 h-4 w-4 text-muted-foreground" />
+                        {formatTime(chat.startTime)}
+                      </div>
+                    </TableCell>
+                    <TableCell>{formatTime(chat.lastMessage)}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex items-center justify-end space-x-1">
+                        {chat.contactId && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleOpenHistory(chat.contactId!, chat.customer)}
+                            title="View contact history"
+                          >
+                            <History className="h-4 w-4 mr-1" />
+                            History
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedChat(chat)
+                            setMessageModalOpen(true)
+                          }}
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          Messages
+                        </Button>
+                        <Button variant="ghost" size="icon">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Messages Modal */}
+      <Dialog open={messageModalOpen} onOpenChange={setMessageModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>
+              Chat Messages
+              {selectedChat?.alias && ` - ${selectedChat.alias}`}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedChat && (
+            <MessageList
+              chatId={selectedChat.id}
+              chatAlias={selectedChat.alias}
+              className="h-full"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Contact History Panel */}
+      <ContactHistoryPanel
+        contactId={historyContactId}
+        contactName={historyContactName}
+        open={historyPanelOpen}
+        onOpenChange={setHistoryPanelOpen}
+        onJumpToChat={(chatId) => {
+          // Find the chat and open messages modal
+          const chat = chats.find(c => c.id === chatId)
+          if (chat) {
+            setSelectedChat(chat)
+            setMessageModalOpen(true)
+          }
+        }}
+      />
+    </div>
+  )
+}

@@ -1,0 +1,172 @@
+{
+  "analysis_date": "2025-10-02T13:21:19.425Z",
+  "date_range": {
+    "from": "2025-09-02",
+    "to": "2025-10-02"
+  },
+  "summary": {
+    "total_chats": 100,
+    "chats_with_messages": 20,
+    "chats_without_messages": 80,
+    "total_messages": 306,
+    "percentage_with_messages": "20.0"
+  },
+  "by_status": {
+    "PICKED_UP": {
+      "total": 59,
+      "withMessages": 1,
+      "totalMessages": 8
+    },
+    "RESPONDED_BY_AGENT": {
+      "total": 26,
+      "withMessages": 8,
+      "totalMessages": 163
+    },
+    "OPENED": {
+      "total": 2,
+      "withMessages": 2,
+      "totalMessages": 14
+    },
+    "ABANDONED_POLL": {
+      "total": 4,
+      "withMessages": 4,
+      "totalMessages": 66
+    },
+    "CLOSED": {
+      "total": 7,
+      "withMessages": 4,
+      "totalMessages": 42
+    },
+    "COMPLETING_POLL": {
+      "total": 2,
+      "withMessages": 1,
+      "totalMessages": 13
+    }
+  },
+  "histogram": {
+    "0": 80,
+    "6-10": 6,
+    "1-5": 3,
+    "20+": 7,
+    "11-20": 4
+  },
+  "examples_with_messages": [
+    {
+      "chat_id": "2cf48151-e15f-4df9-a570-eed074c920a3",
+      "status": "PICKED_UP",
+      "message_count": 8,
+      "created_at": "2025-10-02 07:56:06",
+      "sample_message": {
+        "body": "Hola 👋 Carolina , \n\nConfirmamos la recepción de tu cuota por **$ 100.000** realizada el 26/08/2025, para la compra del Apartamento - 1817 en el proyecto **El Bosque**. \n\nEn **Pactar** te agradecemos por confiar en nosotros, estás cada vez más cerca de hacer realidad el sueño de tener tu vivienda propia. 🏡 \n\nSi necesitas comunicarte con tu asesora, Carolina Hurtado, puedes escribirle en el siguiente botón:",
+        "broadcasted": true,
+        "caption": null,
+        "created_at": "2025-08-28 09:03:33",
+        "incoming": false,
+        "location": null,
+        "type": "TEXT"
+      }
+    },
+    {
+      "chat_id": "3d41e73c-b4d5-4cf3-affe-93d54187182b",
+      "status": "OPENED",
+      "message_count": 9,
+      "created_at": "2025-10-02 06:45:24",
+      "sample_message": {
+        "body": "Buenos días",
+        "broadcasted": false,
+        "caption": null,
+        "created_at": "2025-10-02 06:44:04",
+        "incoming": true,
+        "location": null,
+        "type": "TEXT"
+      }
+    },
+    {
+      "chat_id": "20fe6f9f-65f6-47e5-a25e-b84ef7225f6f",
+      "status": "OPENED",
+      "message_count": 5,
+      "created_at": "2025-10-01 21:26:01",
+      "sample_message": {
+        "body": "Hola 👋 Diver  Arley , \n\nConfirmamos la recepción de tu cuota por **$ 2.768.104** realizada el 01/09/2025, para la compra del Apartamento - 306 en el proyecto **Majagua Vital**. \n\nEn **Pactar** te agradecemos por confiar en nosotros, estás cada vez más cerca de hacer realidad el sueño de tener tu vivienda propia. 🏡 \n\nSi necesitas comunicarte con tu asesora, Carolina Hurtado, puedes escribirle en el siguiente botón:",
+        "broadcasted": true,
+        "caption": null,
+        "created_at": "2025-09-05 09:03:13",
+        "incoming": false,
+        "location": null,
+        "type": "TEXT"
+      }
+    },
+    {
+      "chat_id": "cd1128c1-1b16-4da6-9d7d-3763ccf38569",
+      "status": "RESPONDED_BY_AGENT",
+      "message_count": 25,
+      "created_at": "2025-10-01 14:54:20",
+      "sample_message": {
+        "body": "Bue os dias",
+        "broadcasted": false,
+        "caption": null,
+        "created_at": "2025-10-01 10:58:02",
+        "incoming": true,
+        "location": null,
+        "type": "TEXT"
+      }
+    },
+    {
+      "chat_id": "b7542d5e-19f3-4dd2-962d-f98cb6d36b00",
+      "status": "ABANDONED_POLL",
+      "message_count": 28,
+      "created_at": "2025-10-01 14:10:46",
+      "sample_message": {
+        "body": "Hola buenas tardes",
+        "broadcasted": false,
+        "caption": null,
+        "created_at": "2025-10-01 14:08:13",
+        "incoming": true,
+        "location": null,
+        "type": "TEXT"
+      }
+    }
+  ],
+  "examples_without_messages": [
+    {
+      "chat_id": "81d681e9-59d4-45d8-8781-0fb1d9bbb424",
+      "status": "RESPONDED_BY_AGENT",
+      "created_at": "2025-10-02 07:46:15",
+      "responded_at": "2025-10-02 07:46:47",
+      "has_agent": true,
+      "has_contact": true
+    },
+    {
+      "chat_id": "de89de20-438a-41d4-8f36-c36f8110a76d",
+      "status": "PICKED_UP",
+      "created_at": "2025-10-02 07:11:46",
+      "responded_at": null,
+      "has_agent": true,
+      "has_contact": true
+    },
+    {
+      "chat_id": "d142fe3c-5609-4b13-a1bd-2be68cf2c4a5",
+      "status": "RESPONDED_BY_AGENT",
+      "created_at": "2025-10-02 07:04:07",
+      "responded_at": "2025-10-02 07:14:46",
+      "has_agent": true,
+      "has_contact": true
+    },
+    {
+      "chat_id": "0d9d3004-f25d-400d-83d4-8278eec77b39",
+      "status": "RESPONDED_BY_AGENT",
+      "created_at": "2025-10-01 17:07:45",
+      "responded_at": "2025-10-01 17:09:06",
+      "has_agent": true,
+      "has_contact": true
+    },
+    {
+      "chat_id": "d41e7f94-ffce-4804-99b5-6981cf3a2326",
+      "status": "PICKED_UP",
+      "created_at": "2025-10-01 16:49:01",
+      "responded_at": null,
+      "has_agent": true,
+      "has_contact": true
+    }
+  ]
+}

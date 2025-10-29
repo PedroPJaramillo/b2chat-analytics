@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient, Prisma } from '@prisma/client'
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
@@ -14,8 +14,16 @@ const createPrismaClient = () => {
     )
   }
 
+  // Determine Prisma log level based on LOG_LEVEL env var
+  const logLevel = process.env.LOG_LEVEL || 'info'
+  const prismaLogs: Prisma.LogLevel[] =
+    logLevel === 'trace' || logLevel === 'debug' ? ['query', 'info', 'warn', 'error'] :
+    logLevel === 'info' ? ['warn', 'error'] :
+    logLevel === 'warn' ? ['warn', 'error'] :
+    ['error'] // error or fatal
+
   return new PrismaClient({
-    log: process.env.NODE_ENV === 'development' ? ['query'] : [],
+    log: process.env.NODE_ENV === 'development' ? prismaLogs : ['error'],
     // Add better error handling and connection configuration
     errorFormat: 'pretty',
   })

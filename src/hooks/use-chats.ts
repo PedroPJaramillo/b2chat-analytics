@@ -4,9 +4,12 @@ import { useState, useEffect, useCallback } from 'react'
 
 interface Chat {
   id: string
+  b2chatId?: string // NEW: Optional for backward compatibility
   customer: string
   agent: string
   status: string
+  alias?: string | null // NEW: Optional for backward compatibility
+  tags?: string[] // NEW: Optional for backward compatibility
   priority: string
   topic: string
   messages: number
@@ -44,7 +47,9 @@ export function useChats(params: UseChatsParams = {}) {
         throw new Error('Failed to fetch chats')
       }
 
-      const chats = await response.json()
+      const result = await response.json()
+      // Handle both old and new API response formats
+      const chats = result.data || result || []
       setData(chats)
       setError(null)
     } catch (err) {

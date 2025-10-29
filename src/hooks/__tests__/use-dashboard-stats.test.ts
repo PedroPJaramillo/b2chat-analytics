@@ -1,6 +1,7 @@
 import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactNode } from 'react'
+import React from 'react'
 import { useDashboardStats } from '../use-dashboard-stats'
 
 // Mock fetch
@@ -17,11 +18,12 @@ const createWrapper = () => {
     },
   })
 
-  return ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={queryClient}>
-      {children}
-    </QueryClientProvider>
-  )
+  const TestWrapper = ({ children }: { children: ReactNode }) =>
+    React.createElement(QueryClientProvider, { client: queryClient }, children);
+
+  TestWrapper.displayName = 'TestWrapper';
+
+  return TestWrapper;
 }
 
 describe('useDashboardStats', () => {
@@ -76,7 +78,7 @@ describe('useDashboardStats', () => {
   })
 
   it('should handle API error', async () => {
-    mockFetch.mockResolvedValueOnce({
+    mockFetch.mockResolvedValue({
       ok: false,
       status: 500,
       text: async () => 'Internal Server Error',
@@ -86,24 +88,32 @@ describe('useDashboardStats', () => {
       wrapper: createWrapper(),
     })
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false)
-    })
+    // Wait for error state (without checking loading first)
+    await waitFor(
+      () => {
+        expect(result.current.error).toBeTruthy()
+      },
+      { timeout: 5000 }
+    )
 
     expect(result.current.data).toBeNull()
-    expect(result.current.error).toBeTruthy()
+    expect(result.current.error).toBe('Failed to fetch dashboard stats')
   })
 
   it('should handle network error', async () => {
-    mockFetch.mockRejectedValueOnce(new Error('Network error'))
+    mockFetch.mockRejectedValue(new Error('Network error'))
 
     const { result } = renderHook(() => useDashboardStats(), {
       wrapper: createWrapper(),
     })
 
-    await waitFor(() => {
-      expect(result.current.loading).toBe(false)
-    })
+    // Wait for error state (without checking loading first)
+    await waitFor(
+      () => {
+        expect(result.current.error).toBeTruthy()
+      },
+      { timeout: 5000 }
+    )
 
     expect(result.current.data).toBeNull()
     expect(result.current.error).toBeTruthy()

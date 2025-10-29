@@ -11,8 +11,11 @@ import { prisma } from '@/lib/prisma'
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
+  let userId: string | null = null;
+
   try {
-    const { userId } = await auth()
+    const authResult = await auth()
+    userId = authResult.userId
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -42,8 +45,9 @@ export async function GET(request: NextRequest) {
     // Get active sessions
     const activeSessions = SessionTracker.getActiveSessions()
 
-    // Get audit statistics
-    const auditStats = await auditLogger.getAuditStats(timeRange)
+    // Get audit statistics (map 6h to 24h for audit stats)
+    const auditStatsTimeRange = timeRange === '6h' ? '24h' : timeRange
+    const auditStats = await auditLogger.getAuditStats(auditStatsTimeRange)
 
     // Get database statistics
     const dbStats = await getDatabaseStats()
@@ -85,7 +89,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     logger.error('Metrics API error', {
       error: error instanceof Error ? error.message : 'Unknown error',
-      userId,
+      userId: userId ?? undefined,
     })
 
     return NextResponse.json(
@@ -97,6 +101,8 @@ export async function GET(request: NextRequest) {
 
 // Get database statistics
 async function getDatabaseStats() {
+  let userId: string | null = null;
+
   try {
     const [
       tableStats,
@@ -158,7 +164,9 @@ async function getDatabaseStats() {
       }
     }
   } catch (error) {
-    logger.error('Database stats error', { error })
+    logger.error('Database stats error', {
+      error: error instanceof Error ? error.message : 'Unknown error'
+    })
     return {
       error: 'Could not retrieve database statistics',
       summary: {
@@ -173,6 +181,8 @@ async function getDatabaseStats() {
 
 // Get API performance statistics
 async function getAPIPerformanceStats(timeRange: '1h' | '6h' | '24h') {
+  let userId: string | null = null;
+
   try {
     // This would typically come from your logging system
     // For now, return mock data structure

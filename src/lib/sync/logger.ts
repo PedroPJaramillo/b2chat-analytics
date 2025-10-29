@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { logger as consoleLogger } from '@/lib/logger'
+import { ensureSystemUserExists, getUserContext } from '@/lib/user-management'
 
 export class SyncLogger {
   private syncId: string
@@ -7,17 +8,19 @@ export class SyncLogger {
   private entityType: string
   private operation: string
   private startTime: Date
+  private correlationId?: string
 
-  constructor(syncId: string, userId: string, entityType: string, operation: string) {
+  constructor(syncId: string, userId: string, entityType: string, operation: string, correlationId?: string) {
     this.syncId = syncId
     this.userId = userId
     this.entityType = entityType
     this.operation = operation
     this.startTime = new Date()
+    this.correlationId = correlationId
   }
 
-  static async createSyncLogger(syncId: string, userId: string, entityType: string, operation: string): Promise<SyncLogger> {
-    const syncLogger = new SyncLogger(syncId, userId, entityType, operation)
+  static async createSyncLogger(syncId: string, userId: string, entityType: string, operation: string, correlationId?: string): Promise<SyncLogger> {
+    const syncLogger = new SyncLogger(syncId, userId, entityType, operation, correlationId)
 
     // Create initial SyncLog entry
     await prisma.syncLog.create({
@@ -30,7 +33,8 @@ export class SyncLogger {
         status: 'started',
         startedAt: syncLogger.startTime,
         metadata: {
-          operation_id: syncId
+          operation_id: syncId,
+          correlation_id: correlationId
         }
       }
     })
@@ -39,7 +43,9 @@ export class SyncLogger {
       syncId,
       userId,
       entityType,
-      operation
+      operation,
+      correlationId,
+      source: 'sync'
     })
 
     return syncLogger
@@ -65,6 +71,8 @@ export class SyncLogger {
     consoleLogger.info(`${this.operation} progress for ${this.entityType}`, {
       syncId: this.syncId,
       recordCount,
+      correlationId: this.correlationId,
+      source: 'sync',
       ...metadata
     })
   }
@@ -90,6 +98,8 @@ export class SyncLogger {
       syncId: this.syncId,
       recordCount,
       duration: completedAt.getTime() - this.startTime.getTime(),
+      correlationId: this.correlationId,
+      source: 'sync',
       ...metadata
     })
   }
@@ -118,23 +128,39 @@ export class SyncLogger {
       error: errorMessage,
       recordCount,
       duration: completedAt.getTime() - this.startTime.getTime(),
+      correlationId: this.correlationId,
+      source: 'sync',
       ...metadata
     })
   }
 
   // Static method to get a default user ID for system operations
   static async getSystemUserId(): Promise<string> {
-    // Try to find an admin user, or create a system user entry
-    const adminUser = await prisma.user.findFirst({
-      where: { role: 'Admin' }
-    })
-
-    if (adminUser) {
-      return adminUser.id
+    try {
+      // Ensure system user exists and return its ID
+      return await ensureSystemUserExists();
+    } catch (error) {
+      consoleLogger.error('Failed to get system user ID', {
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      
+      // Fallback to hardcoded system ID
+      return 'system';
     }
+  }
 
-    // If no admin user exists, we could create a system user
-    // For now, we'll use a default system ID
-    return 'system'
+  // Static method to get user context (current user or system user)
+  static async getUserContextId(): Promise<string> {
+    try {
+      const { userId } = await getUserContext();
+      return userId;
+    } catch (error) {
+      consoleLogger.error('Failed to get user context', {
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+      
+      // Fallback to system user
+      return await SyncLogger.getSystemUserId();
+    }
   }
 }

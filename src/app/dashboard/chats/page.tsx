@@ -1,244 +1,204 @@
-"use client"
+// Enhanced Chat Management Page with Three View Modes
 
-import { useState, useEffect } from 'react'
+'use client'
+
+import { useState, useMemo } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Skeleton } from "@/components/ui/skeleton"
-import { MoreHorizontal, Search, Filter, MessageSquare, Clock, User } from "lucide-react"
-import { format } from 'date-fns'
+import { MessageSquare, Users, Table as TableIcon } from 'lucide-react'
 
-interface Chat {
-  id: string
-  customer: string
-  agent: string | null
-  status: string
-  startTime: string
-  lastMessage: string
-  messages: number
-  priority: string
-  topic: string
-}
+// Import view components
+import { ContactView } from '@/components/chats/contact-view'
+import { ActiveChatsView } from '@/components/chats/active-chats-view'
+import { MessagesView } from '@/components/chats/messages-view'
+import { FilterBar } from '@/components/chats/filter-bar'
+import { ContactHistoryPanel } from '@/components/chats/contact-history-panel'
+import {
+  UnassignedChatsNotification,
+  HighPriorityNotification,
+} from '@/components/chats/notification-banner'
 
-const getStatusColor = (status: string) => {
-  switch (status?.toLowerCase()) {
-    case 'open':
-    case 'active':
-      return 'bg-green-100 text-green-800'
-    case 'closed':
-    case 'resolved':
-      return 'bg-gray-100 text-gray-800'
-    case 'pending':
-      return 'bg-yellow-100 text-yellow-800'
-    default:
-      return 'bg-gray-100 text-gray-800'
-  }
-}
+// Import hooks
+import { useChats } from '@/lib/hooks/use-chats'
+import { useMessages } from '@/lib/hooks/use-messages'
+import { useChatFilters } from '@/lib/hooks/use-chat-filters'
+import { useFilterOptions } from '@/lib/hooks/use-chats'
 
-const getPriorityColor = (priority: string) => {
-  switch (priority?.toLowerCase()) {
-    case 'urgent':
-    case 'high':
-      return 'bg-red-100 text-red-800'
-    case 'medium':
-      return 'bg-yellow-100 text-yellow-800'
-    case 'low':
-      return 'bg-blue-100 text-blue-800'
-    default:
-      return 'bg-gray-100 text-gray-800'
-  }
-}
-
-const formatTime = (timestamp: string) => {
-  try {
-    const date = new Date(timestamp)
-    const now = new Date()
-    const diff = now.getTime() - date.getTime()
-
-    // Less than 1 minute
-    if (diff < 60000) return 'Just now'
-
-    // Less than 1 hour
-    if (diff < 3600000) {
-      const minutes = Math.floor(diff / 60000)
-      return `${minutes} minute${minutes > 1 ? 's' : ''} ago`
-    }
-
-    // Less than 24 hours
-    if (diff < 86400000) {
-      const hours = Math.floor(diff / 3600000)
-      return `${hours} hour${hours > 1 ? 's' : ''} ago`
-    }
-
-    // More than 24 hours
-    return format(date, 'MMM d, yyyy HH:mm')
-  } catch {
-    return timestamp
-  }
-}
+// Import types
+import { ViewMode } from '@/types/chat'
+import { pageContainerClasses } from '@/lib/ui-utils'
 
 export default function ChatsPage() {
-  const [chats, setChats] = useState<Chat[]>([])
-  const [loading, setLoading] = useState(true)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [statusFilter, setStatusFilter] = useState("all")
+  // View mode state
+  const [viewMode, setViewMode] = useState<ViewMode>('active')
 
-  useEffect(() => {
-    const fetchChats = async () => {
-      try {
-        setLoading(true)
-        const params = new URLSearchParams()
-        if (statusFilter !== 'all') params.append('status', statusFilter)
+  // Filter state
+  const { filters, resetFilters, setFilter } = useChatFilters()
 
-        const response = await fetch(`/api/chats${params.toString() ? `?${params}` : ''}`)
+  // Fetch chats data
+  const { data: chatsData, isLoading: chatsLoading } = useChats(filters)
+  const chats = useMemo(() => chatsData?.data || [], [chatsData?.data])
+  const chatsPagination = chatsData?.pagination
 
-        if (!response.ok) {
-          throw new Error('Failed to fetch chats')
-        }
-
-        const data = await response.json()
-        setChats(data)
-      } catch (error) {
-        console.error('Error fetching chats:', error)
-        // Use fallback data if API fails
-        setChats([])
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchChats()
-  }, [statusFilter])
-
-  const filteredChats = chats.filter(chat =>
-    chat.customer.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    chat.agent?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    chat.topic?.toLowerCase().includes(searchQuery.toLowerCase())
+  // Fetch messages data (for Messages View)
+  const { data: messagesData, isLoading: messagesLoading } = useMessages(
+    viewMode === 'messages' ? filters : { ...filters, limit: 0 }
   )
+  const messages = messagesData?.data || []
+  const messagesPagination = messagesData?.pagination
+
+  // Fetch filter options
+  const { data: filterOptions } = useFilterOptions()
+
+  // Contact history panel
+  const [historyContactId, setHistoryContactId] = useState<string | null>(null)
+  const [historyContactName, setHistoryContactName] = useState("")
+  const [historyPanelOpen, setHistoryPanelOpen] = useState(false)
+
+  // Handlers
+  const handleViewHistory = (contactId: string, contactName: string) => {
+    setHistoryContactId(contactId)
+    setHistoryContactName(contactName)
+    setHistoryPanelOpen(true)
+  }
+
+  const handlePageChange = (page: number) => {
+    if (page < 1 || page === (filters.page || 1)) return
+    setFilter('page', page)
+  }
+
+  // Calculate display counts and notifications
+  const totalChats = chatsPagination?.total || 0
+  const activeChatsCount = chats.filter(c => c.status === 'open' || c.status === 'pending').length
+  const contactsCount = new Set(chats.map(c => c.contactId).filter(Boolean)).size
+
+  // Calculate notification triggers
+  const notifications = useMemo(() => {
+    const unassignedCount = chats.filter(
+      c => (c.status === 'open' || c.status === 'pending') && !c.agent
+    ).length
+
+    const highPriorityCount = chats.filter(
+      c => (c.status === 'open' || c.status === 'pending') &&
+           (c.priority === 'urgent' || c.priority === 'high')
+    ).length
+
+    return {
+      unassignedCount,
+      highPriorityCount,
+    }
+  }, [chats])
 
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+    <div className={pageContainerClasses}>
+      {/* Header */}
       <div className="flex items-center justify-between space-y-2">
-        <h2 className="text-3xl font-bold tracking-tight">Chats</h2>
+        <h2 className="text-3xl font-bold tracking-tight">Chat Management</h2>
         <div className="flex items-center space-x-2">
           <Badge variant="outline">
             <MessageSquare className="mr-1 h-3 w-3" />
-            {filteredChats.length} Active
+            {totalChats} Total
+          </Badge>
+          <Badge variant="outline" className="bg-green-50">
+            {activeChatsCount} Active
           </Badge>
         </div>
       </div>
 
+      {/* Notification Banners */}
+      <div className="space-y-2">
+        {notifications.unassignedCount > 0 && (
+          <UnassignedChatsNotification count={notifications.unassignedCount} />
+        )}
+        {notifications.highPriorityCount > 0 && (
+          <HighPriorityNotification count={notifications.highPriorityCount} />
+        )}
+      </div>
+
       <Card>
         <CardHeader>
-          <CardTitle>All Conversations</CardTitle>
+          <CardTitle>Conversations</CardTitle>
           <CardDescription>
-            Monitor and manage customer chat sessions
+            Manage customer chats with advanced filtering and multiple view modes
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          {/* Filters */}
-          <div className="flex items-center space-x-2 mb-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by customer, agent, or topic..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-8"
-              />
-            </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Status</SelectItem>
-                <SelectItem value="open">Open</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="closed">Closed</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant="outline" size="icon">
-              <Filter className="h-4 w-4" />
-            </Button>
-          </div>
+        <CardContent className="space-y-4">
+          {/* Filter Bar */}
+          <FilterBar
+            viewMode={viewMode}
+            agentOptions={filterOptions?.agents || []}
+          />
 
-          {/* Table */}
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Customer</TableHead>
-                <TableHead>Agent</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Priority</TableHead>
-                <TableHead>Topic</TableHead>
-                <TableHead>Messages</TableHead>
-                <TableHead>Started</TableHead>
-                <TableHead>Last Activity</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <TableRow key={i}>
-                    {Array.from({ length: 9 }).map((_, j) => (
-                      <TableCell key={j}>
-                        <Skeleton className="h-4 w-[100px]" />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : filteredChats.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground">
-                    No chats found
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredChats.map((chat) => (
-                  <TableRow key={chat.id}>
-                    <TableCell className="font-medium">{chat.customer}</TableCell>
-                    <TableCell>{chat.agent || 'Unassigned'}</TableCell>
-                    <TableCell>
-                      <Badge className={getStatusColor(chat.status)}>
-                        {chat.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={getPriorityColor(chat.priority)}>
-                        {chat.priority}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{chat.topic}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center">
-                        <MessageSquare className="mr-1 h-4 w-4 text-muted-foreground" />
-                        {chat.messages}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center">
-                        <Clock className="mr-1 h-4 w-4 text-muted-foreground" />
-                        {formatTime(chat.startTime)}
-                      </div>
-                    </TableCell>
-                    <TableCell>{formatTime(chat.lastMessage)}</TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="icon">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+          {/* View Mode Tabs */}
+          <Tabs value={viewMode} onValueChange={(value) => setViewMode(value as ViewMode)}>
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="contact" className="gap-2">
+                <Users className="h-4 w-4" />
+                Contact View
+                <Badge variant="secondary" className="ml-1">
+                  {contactsCount}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger value="active" className="gap-2">
+                <MessageSquare className="h-4 w-4" />
+                Active Chats
+                <Badge variant="secondary" className="ml-1">
+                  {activeChatsCount}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger value="messages" className="gap-2">
+                <TableIcon className="h-4 w-4" />
+                Messages
+                <Badge variant="secondary" className="ml-1">
+                  {messagesPagination?.total || 0}
+                </Badge>
+              </TabsTrigger>
+            </TabsList>
+
+            {/* Contact View Tab */}
+            <TabsContent value="contact" className="mt-4">
+              <ContactView
+                chats={chats}
+                isLoading={chatsLoading}
+                onViewHistory={handleViewHistory}
+                onResetFilters={resetFilters}
+              />
+            </TabsContent>
+
+            {/* Active Chats View Tab */}
+            <TabsContent value="active" className="mt-4">
+              <ActiveChatsView
+                chats={chats}
+                isLoading={chatsLoading}
+                onViewHistory={handleViewHistory}
+                onResetFilters={resetFilters}
+              />
+            </TabsContent>
+
+            {/* Messages View Tab */}
+            <TabsContent value="messages" className="mt-4">
+              <MessagesView
+                messages={messages}
+                isLoading={messagesLoading}
+                onResetFilters={resetFilters}
+                totalCount={messagesPagination?.total || 0}
+                currentPage={filters.page || 1}
+                pageSize={filters.limit || 50}
+                onPageChange={handlePageChange}
+              />
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
+
+      {/* Contact History Panel */}
+      <ContactHistoryPanel
+        contactId={historyContactId}
+        contactName={historyContactName}
+        open={historyPanelOpen}
+        onOpenChange={setHistoryPanelOpen}
+      />
     </div>
   )
 }
